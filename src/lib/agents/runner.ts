@@ -3,6 +3,7 @@ import { logEvent } from "@/lib/events";
 import { scoutAgent } from "./scout";
 import { auditAgent } from "./audit";
 import { salesAgent } from "./sales";
+import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
 
 const REGISTRY: Record<"scout" | "audit" | "sales", Agent> = {
@@ -33,9 +34,15 @@ export async function runAgent(name: AgentName): Promise<{ agentRunId: string }>
     const actions = await agent.proposeActions({ llmProviderId: "openai" });
 
     for (const action of actions) {
-      if (action.controlTier === "BRIAN_ONLY") {
-        await logEvent("agent_action_flagged_brian_only", {
-          payload: { agentName: name, summary: action.summary },
+      const decision = evaluateAgentAction(action);
+      if (!decision.execute) {
+        await logEvent("agent_action_blocked_for_brian", {
+          payload: {
+            agentName: name,
+            summary: action.summary,
+            consequence: action.consequence,
+            reason: decision.reason,
+          },
         });
         continue;
       }

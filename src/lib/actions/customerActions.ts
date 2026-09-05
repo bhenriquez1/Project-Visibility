@@ -10,6 +10,11 @@ import { decryptSecret } from "@/lib/crypto";
 import { listReviews, postReviewReply } from "@/lib/providers/googleBusinessProfile";
 import { answerGrowthManagerQuestion, generateReviewReplyDraft } from "@/lib/providers/llm";
 import { createBillingPortalSession } from "@/lib/providers/stripe";
+import {
+  assertAgentCostBudget,
+  assertMonthlyAiEntitlement,
+  assertMonthlyEventEntitlement,
+} from "@/lib/entitlements";
 
 async function requireCustomer(): Promise<string> {
   const session = await auth();
@@ -30,6 +35,13 @@ async function requireOwnedReviewReply(reviewReplyId: string, prospectId: string
 
 export async function syncReviewsAction() {
   const prospectId = await requireCustomer();
+  await assertMonthlyEventEntitlement(
+    prospectId,
+    "reviewSyncsPerMonth",
+    "reviews_synced",
+    "review syncs"
+  );
+  await assertAgentCostBudget(prospectId);
 
   const connection = await prisma.googleBusinessConnection.findUnique({ where: { prospectId } });
   if (!connection) {
@@ -70,6 +82,13 @@ export async function syncReviewsAction() {
 
 export async function generateReviewReplyDraftAction(reviewReplyId: string) {
   const prospectId = await requireCustomer();
+  await assertMonthlyAiEntitlement(
+    prospectId,
+    "reviewDraftsPerMonth",
+    "ReviewReply",
+    "review reply drafts"
+  );
+  await assertAgentCostBudget(prospectId);
   const reviewReply = await requireOwnedReviewReply(reviewReplyId, prospectId);
   const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
 
@@ -137,6 +156,13 @@ export async function rejectReviewReply(reviewReplyId: string) {
 
 export async function askGrowthManagerAction(question: string): Promise<string> {
   const prospectId = await requireCustomer();
+  await assertMonthlyAiEntitlement(
+    prospectId,
+    "growthQuestionsPerMonth",
+    "GrowthManagerQuestion",
+    "AI Growth Manager questions"
+  );
+  await assertAgentCostBudget(prospectId);
 
   const [prospect, latestAudit, reviews] = await Promise.all([
     prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } }),

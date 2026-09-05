@@ -6,6 +6,7 @@ export async function logAiUsage(relatedType: string, relatedId: string, meta: A
   await prisma.aiUsage.create({
     data: {
       model: meta.model,
+      provider: meta.provider === "anthropic" ? "ANTHROPIC" : "OPENAI",
       relatedType,
       relatedId,
       inputTokens: meta.inputTokens,

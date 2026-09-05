@@ -1,9 +1,8 @@
 # Roadmap
 
-This repo currently implements **V1** only. V2 and V3 are documented here for direction so V1's
-architecture doesn't foreclose them — see the `ApprovalTier` enum, `unavailableSources` pattern,
-and the provider interface in `lib/providers/*` for the seams left for this purpose. Neither is
-implemented yet; do not build against this section without an explicit go-ahead.
+The repo includes the cash-flow MVP plus customer-operations and agent-control foundations.
+Future capabilities build through the `ApprovalTier`, plan-entitlement, provider, cost, and
+Brian Control Layer seams rather than bypassing them.
 
 ## V1 — Cash-flow MVP (this repo, current state)
 
@@ -35,12 +34,12 @@ Analytics Agent → Retention Agent.
 Above all of it, the **Brian Control Layer** (the schema already reserves this today via
 `ApprovalTier`, unused beyond V1's all-approval-required default):
 
-- 🟢 **Automatic** — routine analysis, monitoring, reporting, approved optimization classes,
-  ordinary customer communication.
-- 🟡 **AI can prepare, Brian approves** — new sales offers, unusual GBP changes, significant
-  customer commitments, new campaign types.
+- 🟢 **Automatic** — analysis, monitoring, reporting, and reversible internal records only.
+- 🟡 **AI can prepare, Brian approves** — drafts and recommendations; the external effect still
+  requires explicit human execution.
 - 🔴 **Brian only** — pricing-policy changes, refunds above threshold, contracts, ad spending,
-  deleting customer assets, changing ownership/access, financial commitments.
+  deleting customer assets, changing ownership/access, financial commitments, and all other
+  consequential external actions.
 
 ## Economics discipline (applies at every stage)
 

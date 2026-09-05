@@ -22,8 +22,9 @@ export default async function AgentsPage() {
     <div className="max-w-3xl">
       <h1 className="text-xl font-semibold">Agents</h1>
       <p className="mt-1 text-sm text-black/60 dark:text-white/60">
-        Manually triggered — no scheduler yet. Every action is either automatic (no external
-        effect) or drafted for your approval; nothing sends or posts on its own.
+        Brian Control Layer enforced: agents may analyze, create reversible internal records,
+        and prepare drafts. Financial, contractual, destructive, external communication, and
+        account-ownership actions are blocked from autonomous execution.
       </p>
 
       <div className="mt-6 flex flex-col gap-3">

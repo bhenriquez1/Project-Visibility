@@ -17,7 +17,9 @@ export interface CustomerEconomics {
   dataCostCents: number;
   infraShareCents: number;
   supportCostCents: number;
+  agentCostCents: number;
   contributionMarginCents: number;
+  contributionMarginPct: number;
 }
 
 export interface EconomicsSummary {
@@ -25,26 +27,35 @@ export interface EconomicsSummary {
   arrCents: number;
   activeCustomerCount: number;
   canceledCustomerCount: number;
+  subscriptionStatusCounts: Record<string, number>;
+  retentionRate: number | null;
   churnRate: number | null;
   cacCents: number | null;
   ltvCents: number | null;
   grossMarginPct: number | null;
   totalAiCostCents: number;
   totalDataCostCents: number;
+  agentCostPerCustomerCents: number | null;
+  averageContributionMarginCents: number | null;
   funnelCounts: Record<string, number>;
   conversionRatePct: number | null;
   perCustomer: CustomerEconomics[];
 }
 
 export async function computeEconomics(): Promise<EconomicsSummary> {
-  const [activeSubs, canceledSubs, allProspects, infraTotalCents, supportPerCustomerCents] =
+  const [activeSubs, subscriptionGroups, allProspects, infraTotalCents, supportPerCustomerCents] =
     await Promise.all([
       prisma.subscription.findMany({ where: { status: "ACTIVE" }, include: { prospect: true } }),
-      prisma.subscription.count({ where: { status: "CANCELED" } }),
+      prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.prospect.findMany({ select: { status: true } }),
       getSettingCents("infra_cost_cents_total_per_month"),
       getSettingCents("support_cost_cents_per_customer_per_month"),
     ]);
+
+  const subscriptionStatusCounts = Object.fromEntries(
+    subscriptionGroups.map((group) => [group.status, group._count._all])
+  );
+  const canceledSubs = subscriptionStatusCounts.CANCELED ?? 0;
 
   const mrrCents = activeSubs.reduce((sum, s) => sum + s.priceCents, 0);
   const arrCents = mrrCents * 12;
@@ -53,6 +64,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
 
   const churnRate =
     activeCustomerCount + canceledSubs > 0 ? canceledSubs / (activeCustomerCount + canceledSubs) : null;
+  const retentionRate = churnRate === null ? null : 1 - churnRate;
 
   const arpuCents = activeCustomerCount > 0 ? mrrCents / activeCustomerCount : 0;
   const ltvCents = churnRate && churnRate > 0 ? arpuCents / churnRate : null;
@@ -71,6 +83,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
   const perCustomer: CustomerEconomics[] = [];
   let totalAiCostCents = 0;
   let totalDataCostCents = 0;
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
 
   for (const sub of activeSubs) {
     const audits = await prisma.audit.findMany({
@@ -81,7 +94,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
 
     const [auditAiUsage, prospectKeyedAiUsage, dataUsage] = await Promise.all([
       prisma.aiUsage.aggregate({
-        where: { relatedType: "Audit", relatedId: { in: auditIds } },
+        where: { relatedType: "Audit", relatedId: { in: auditIds }, createdAt: { gte: monthStart } },
         _sum: { costCents: true },
       }),
       // Message (V1 outreach), ReviewReply and GrowthManagerQuestion (V2) all key AiUsage by
@@ -90,18 +103,26 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
         where: {
           relatedType: { in: ["Message", "ReviewReply", "GrowthManagerQuestion"] },
           relatedId: sub.prospectId,
+          createdAt: { gte: monthStart },
         },
         _sum: { costCents: true },
       }),
       prisma.apiCallLog.aggregate({
-        where: { relatedType: "Audit", relatedId: { in: auditIds } },
+        where: { relatedType: "Audit", relatedId: { in: auditIds }, createdAt: { gte: monthStart } },
         _sum: { costCents: true },
       }),
     ]);
 
     const aiCostCents = (auditAiUsage._sum.costCents ?? 0) + (prospectKeyedAiUsage._sum.costCents ?? 0);
     const dataCostCents = dataUsage._sum.costCents ?? 0;
+    const agentCostCents = aiCostCents + dataCostCents;
     const paymentFeeCents = sub.priceCents * STRIPE_PERCENT_FEE + STRIPE_FLAT_FEE_CENTS;
+    const contributionMarginCents =
+      sub.priceCents -
+      paymentFeeCents -
+      agentCostCents -
+      infraShareCents -
+      supportPerCustomerCents;
 
     totalAiCostCents += aiCostCents;
     totalDataCostCents += dataCostCents;
@@ -115,13 +136,9 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
       dataCostCents,
       infraShareCents,
       supportCostCents: supportPerCustomerCents,
-      contributionMarginCents:
-        sub.priceCents -
-        paymentFeeCents -
-        aiCostCents -
-        dataCostCents -
-        infraShareCents -
-        supportPerCustomerCents,
+      agentCostCents,
+      contributionMarginCents,
+      contributionMarginPct: sub.priceCents > 0 ? (contributionMarginCents / sub.priceCents) * 100 : 0,
     });
   }
 
@@ -133,18 +150,30 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
     activeSubs.reduce((sum, s) => sum + (s.priceCents * STRIPE_PERCENT_FEE + STRIPE_FLAT_FEE_CENTS), 0);
 
   const grossMarginPct = mrrCents > 0 ? ((mrrCents - totalCostCents) / mrrCents) * 100 : null;
+  const totalAgentCostCents = totalAiCostCents + totalDataCostCents;
+  const agentCostPerCustomerCents =
+    activeCustomerCount > 0 ? totalAgentCostCents / activeCustomerCount : null;
+  const averageContributionMarginCents =
+    activeCustomerCount > 0
+      ? perCustomer.reduce((sum, customer) => sum + customer.contributionMarginCents, 0) /
+        activeCustomerCount
+      : null;
 
   return {
     mrrCents,
     arrCents,
     activeCustomerCount,
     canceledCustomerCount: canceledSubs,
+    subscriptionStatusCounts,
+    retentionRate,
     churnRate,
     cacCents,
     ltvCents,
     grossMarginPct,
     totalAiCostCents,
     totalDataCostCents,
+    agentCostPerCustomerCents,
+    averageContributionMarginCents,
     funnelCounts,
     conversionRatePct,
     perCustomer,

@@ -70,6 +70,7 @@ export const scoutAgent: Agent = {
         };
         actions.push({
           controlTier: "AUTOMATIC",
+          consequence: "INTERNAL_RECORD",
           summary: `New prospect: ${business.businessName} (${business.city})`,
           payload,
         });

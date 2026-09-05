@@ -2,14 +2,16 @@
 
 Internal codename: **Project Visibility**. Public-facing brand: **Local Visibility AI**.
 
-V1's only objective: find a local business → show it a real opportunity → convert it into a
-recurring paying customer. See [`ENGINEERING_STANDARDS.md`](./ENGINEERING_STANDARDS.md) for the
+Local Visibility AI is a recurring-revenue, AI-operated local growth platform. The free audit
+is an acquisition funnel, not the product: paying customers receive ongoing visibility,
+reputation, and growth operations within explicit monthly service limits. See
+[`ENGINEERING_STANDARDS.md`](./ENGINEERING_STANDARDS.md) for the
 non-negotiable rules this codebase follows (no fake data, no ranking promises, no premature
 autonomy).
 
 ## Stack
 
-Next.js (App Router) + TypeScript, Postgres + Prisma, NextAuth (single admin), Tailwind, OpenAI
+Next.js (App Router) + TypeScript, Postgres + Prisma, NextAuth (single admin), Tailwind, OpenAI/Claude
 (audit reasoning + outreach/reply drafts), Google Places API (public business data), SerpAPI
 (search visibility + competitors), Stripe (subscriptions), Resend (transactional email).
 
@@ -47,9 +49,12 @@ Next.js (App Router) + TypeScript, Postgres + Prisma, NextAuth (single admin), T
 2. Audit engine — free-audit funnel → website/Places/SERP providers → OpenAI scoring/narrative → public report page.
 3. CRM + outreach — pipeline board, AI-drafted outreach with mandatory human approval before send, reply logging.
 4. Billing foundation — Stripe Checkout on Won, webhook-driven subscription records.
-5. Economics dashboard — per-customer contribution margin and global MRR/ARR/churn/CAC/LTV/gross margin/AI cost.
+5. Economics dashboard — retention, subscription status, per-customer contribution margin,
+   MRR/ARR/churn/CAC/LTV/gross margin, and agent cost per customer.
+6. Tier-ready plans — $150/month Founding is the initial offer; $299 Growth and $499 Pro are
+   pre-defined behind environment-configured Stripe prices. Every plan has finite usage and
+   support entitlements.
 
-V2 (customer-authorized ops/retention) and V3 (autonomous agent pipeline, tiered autonomy) are
-deliberately **not** implemented — see the plan history for the intended direction. The
-`ApprovalTier` enum and `unavailableSources` pattern exist now specifically so those can be
-added later without a schema rewrite.
+The customer operations and agent foundations are intentionally approval-controlled. Agents
+may analyze, create reversible internal records, and prepare drafts; consequential actions
+never execute autonomously.

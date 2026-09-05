@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripeClientForWebhook } from "@/lib/providers/stripe";
+import { isPlanId, planIdForStripePrice } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 
@@ -35,15 +36,24 @@ export async function POST(req: Request) {
       const prospectId = session.metadata?.prospectId;
       if (!prospectId) break;
 
-      const priceId = process.env.STRIPE_PRICE_ID_FOUNDING ?? "unknown";
+      const metadataPlanId = session.metadata?.planId;
+      const planId = metadataPlanId && isPlanId(metadataPlanId) ? metadataPlanId : "founding";
       const priceCents = session.amount_total ?? 0;
+      if (!session.customer || !session.subscription) break;
 
-      await prisma.subscription.create({
-        data: {
+      await prisma.subscription.upsert({
+        where: { stripeSubscriptionId: String(session.subscription) },
+        update: {
+          plan: planId,
+          priceCents,
+          status: "ACTIVE",
+          canceledAt: null,
+        },
+        create: {
           prospectId,
           stripeCustomerId: String(session.customer),
           stripeSubscriptionId: String(session.subscription),
-          plan: priceId,
+          plan: planId,
           priceCents,
           status: "ACTIVE",
         },
@@ -57,6 +67,15 @@ export async function POST(req: Request) {
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
+      const item = sub.items.data[0];
+      const priceId = item?.price.id;
+      const metadataPlanId = sub.metadata?.planId;
+      const planId =
+        metadataPlanId && isPlanId(metadataPlanId)
+          ? metadataPlanId
+          : priceId
+            ? planIdForStripePrice(priceId)
+            : null;
       const existing = await prisma.subscription.findUnique({
         where: { stripeSubscriptionId: sub.id },
       });
@@ -75,6 +94,13 @@ export async function POST(req: Request) {
         where: { id: existing.id },
         data: {
           status,
+          ...(planId ? { plan: planId } : {}),
+          ...(item?.price.unit_amount !== null && item?.price.unit_amount !== undefined
+            ? { priceCents: item.price.unit_amount }
+            : {}),
+          currentPeriodEnd: item?.current_period_end
+            ? new Date(item.current_period_end * 1000)
+            : existing.currentPeriodEnd,
           canceledAt: status === "CANCELED" ? new Date() : existing.canceledAt,
         },
       });

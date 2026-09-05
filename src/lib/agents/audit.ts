@@ -22,6 +22,7 @@ export const auditAgent: Agent = {
 
     return candidates.map((p) => ({
       controlTier: "AUTOMATIC",
+      consequence: "ANALYSIS",
       summary: `Run audit: ${p.businessName} (${p.city})`,
       payload: { prospectId: p.id } satisfies AuditPayload,
     }));

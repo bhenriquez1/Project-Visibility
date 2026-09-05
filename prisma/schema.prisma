@@ -212,6 +212,7 @@ model Subscription {
 
 enum AiProvider {
   OPENAI
+  ANTHROPIC
 }
 
 model AiUsage {

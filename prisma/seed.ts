@@ -26,8 +26,8 @@ async function main() {
 
   const foundingPrice = await prisma.setting.upsert({
     where: { key: "founding_price_cents" },
-    update: {},
-    create: { key: "founding_price_cents", value: "24900" },
+    update: { value: "15000" },
+    create: { key: "founding_price_cents", value: "15000" },
   });
   console.log(`Founding price setting: $${Number(foundingPrice.value) / 100}/mo`);
 }

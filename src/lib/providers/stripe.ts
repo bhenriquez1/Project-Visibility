@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { PLANS, stripePriceIdForPlan, type PlanId } from "@/lib/plans";
 import { notConfigured, ok, requestFailed, type ProviderResult } from "./types";
 
 function getClient(): Stripe | null {
@@ -10,23 +11,41 @@ function getClient(): Stripe | null {
 export async function createCheckoutSession(input: {
   prospectId: string;
   email: string;
+  planId?: PlanId;
 }): Promise<ProviderResult<{ url: string }>> {
   const client = getClient();
-  const priceId = process.env.STRIPE_PRICE_ID_FOUNDING;
+  const planId = input.planId ?? "founding";
+  const plan = PLANS[planId];
+  const priceId = stripePriceIdForPlan(planId);
   const appUrl = process.env.NEXTAUTH_URL;
+  const expectedLiveMode = process.env.STRIPE_LIVE_MODE === "true";
 
   if (!client) return notConfigured("STRIPE_SECRET_KEY is not set.");
-  if (!priceId) return notConfigured("STRIPE_PRICE_ID_FOUNDING is not set.");
+  if (!priceId) return notConfigured(`${plan.stripePriceEnvKey} is not set.`);
   if (!appUrl) return notConfigured("NEXTAUTH_URL is not set.");
 
   try {
+    const price = await client.prices.retrieve(priceId);
+    if (
+      !price.active ||
+      price.livemode !== expectedLiveMode ||
+      price.unit_amount !== plan.monthlyPriceCents ||
+      price.currency !== "usd" ||
+      price.recurring?.interval !== "month"
+    ) {
+      return requestFailed(
+        `${plan.stripePriceEnvKey} does not point to the active ${expectedLiveMode ? "live" : "test"}-mode $${plan.monthlyPriceCents / 100}/month ${plan.name} price.`
+      );
+    }
+
     const session = await client.checkout.sessions.create({
       mode: "subscription",
       customer_email: input.email,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${appUrl}/admin/prospects/${input.prospectId}?checkout=success`,
       cancel_url: `${appUrl}/admin/prospects/${input.prospectId}?checkout=cancelled`,
-      metadata: { prospectId: input.prospectId },
+      metadata: { prospectId: input.prospectId, planId },
+      subscription_data: { metadata: { prospectId: input.prospectId, planId } },
     });
 
     if (!session.url) return requestFailed("Stripe did not return a checkout URL.");

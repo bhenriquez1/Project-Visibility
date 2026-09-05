@@ -33,6 +33,7 @@ export const salesAgent: Agent = {
       }
       actions.push({
         controlTier: "AI_PREPARED",
+        consequence: "DRAFT",
         summary: `Draft outreach: ${p.businessName}`,
         payload: { prospectId: p.id } satisfies SalesPayload,
       });

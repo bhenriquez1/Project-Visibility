@@ -27,12 +27,20 @@ qualitative buckets (`ScoreLevel`), and copy should describe opportunities, not 
 
 ## No premature autonomy
 
-Every outbound action in V1 (an email to a prospect, a Stripe charge) requires an explicit
-human approval step. Don't add a "send automatically" shortcut, even for convenience — the
-approval gate is the whole point of the V1→V2→V3 trust curve.
+Every agent operates under Brian's control policy. Agents may analyze, create reversible
+internal records, and prepare drafts. External communication, financial, contractual,
+destructive, and account-ownership actions require Brian's explicit approval and execution.
+Don't add an automatic shortcut for these categories.
 
-## No scope creep into V2/V3
+## Bounded recurring service
 
-Don't build the customer-facing dashboard, autonomous agents, or automated optimization
-actions described in the roadmap. Do keep data models and provider interfaces from requiring
-a rewrite when those are built later (e.g. `ApprovalTier`, `unavailableSources`).
+The commercial product is an ongoing local-growth platform, not a one-time audit. Every plan
+must define finite monthly usage, support, location, and agent-cost boundaries in `lib/plans.ts`.
+Overages stop with an explicit message and require Brian's approval; never silently provide
+unbounded service.
+
+## Controlled expansion
+
+Customer operations and agent foundations may expand only through the plan-entitlement and
+Brian Control Layer boundaries above. New capabilities must preserve explicit failure states,
+usage limits, cost attribution, ownership checks, and human execution for consequential work.

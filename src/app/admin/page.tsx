@@ -34,7 +34,14 @@ export default async function EconomicsDashboardPage() {
         <Stat label="MRR" value={formatCents(econ.mrrCents)} />
         <Stat label="ARR" value={formatCents(econ.arrCents)} />
         <Stat label="Active customers" value={String(econ.activeCustomerCount)} />
-        <Stat label="Churn" value={econ.churnRate !== null ? `${(econ.churnRate * 100).toFixed(1)}%` : "N/A"} />
+        <Stat
+          label="Customer retention"
+          value={econ.retentionRate !== null ? `${(econ.retentionRate * 100).toFixed(1)}%` : "N/A"}
+        />
+        <Stat
+          label="Customer churn"
+          value={econ.churnRate !== null ? `${(econ.churnRate * 100).toFixed(1)}%` : "N/A"}
+        />
         <Stat label="CAC" value={econ.cacCents !== null ? formatCents(econ.cacCents) : "N/A"} />
         <Stat label="LTV" value={econ.ltvCents !== null ? formatCents(econ.ltvCents) : "N/A"} />
         <Stat
@@ -46,16 +53,33 @@ export default async function EconomicsDashboardPage() {
           value={econ.conversionRatePct !== null ? `${econ.conversionRatePct.toFixed(1)}%` : "N/A"}
         />
         <Stat
-          label="AI cost / customer"
+          label="Agent cost / customer"
+          value={econ.agentCostPerCustomerCents !== null ? formatCents(econ.agentCostPerCustomerCents) : "N/A"}
+        />
+        <Stat
+          label="Avg contribution / customer"
           value={
-            econ.activeCustomerCount > 0
-              ? formatCents(econ.totalAiCostCents / econ.activeCustomerCount)
+            econ.averageContributionMarginCents !== null
+              ? formatCents(econ.averageContributionMarginCents)
               : "N/A"
           }
         />
         <Stat label="Total AI cost" value={formatCents(econ.totalAiCostCents)} />
         <Stat label="Total data cost" value={formatCents(econ.totalDataCostCents)} />
       </div>
+
+      <section className="mt-10">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-black/60 dark:text-white/60">
+          Subscription status
+        </h2>
+        <div className="mt-3 flex flex-wrap gap-3 text-sm">
+          {["ACTIVE", "PAST_DUE", "INCOMPLETE", "CANCELED"].map((status) => (
+            <div key={status} className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/10">
+              {status}: {econ.subscriptionStatusCounts[status] ?? 0}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="mt-10">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-black/60 dark:text-white/60">
@@ -88,6 +112,7 @@ export default async function EconomicsDashboardPage() {
                   <th className="py-2 pr-4">Data cost</th>
                   <th className="py-2 pr-4">Infra</th>
                   <th className="py-2 pr-4">Support</th>
+                  <th className="py-2 pr-4">Agent cost</th>
                   <th className="py-2 pr-4">Margin</th>
                   <th className="py-2 pr-4">Retention risk</th>
                 </tr>
@@ -104,7 +129,10 @@ export default async function EconomicsDashboardPage() {
                       <td className="py-2 pr-4">{formatCents(c.dataCostCents)}</td>
                       <td className="py-2 pr-4">{formatCents(c.infraShareCents)}</td>
                       <td className="py-2 pr-4">{formatCents(c.supportCostCents)}</td>
-                      <td className="py-2 pr-4 font-medium">{formatCents(c.contributionMarginCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.agentCostCents)}</td>
+                      <td className="py-2 pr-4 font-medium">
+                        {formatCents(c.contributionMarginCents)} ({c.contributionMarginPct.toFixed(1)}%)
+                      </td>
                       <td className="py-2 pr-4">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${RISK_STYLES[risk]}`}>
                           {risk}

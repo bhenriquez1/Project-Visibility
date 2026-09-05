@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { updateSettings } from "@/lib/actions/settingsActions";
 
 const FIELDS: { key: string; label: string; hint: string }[] = [
-  { key: "founding_price_cents", label: "Founding price (cents/mo)", hint: "e.g. 24900 = $249/mo" },
+  { key: "founding_price_cents", label: "Founding price (cents/mo)", hint: "15000 = $150/mo" },
   { key: "places_cost_cents_per_call", label: "Google Places cost per call (cents)", hint: "Check your GCP billing plan" },
   { key: "serp_cost_cents_per_call", label: "SERP API cost per call (cents)", hint: "Check your SerpAPI plan" },
   { key: "infra_cost_cents_total_per_month", label: "Total infra cost (cents/mo)", hint: "Hosting, DB, etc. — split across active customers" },

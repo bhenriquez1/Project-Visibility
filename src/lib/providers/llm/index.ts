@@ -33,6 +33,7 @@ function configuredClient(): { client: LlmClient | null; detail: string } {
 }
 
 export interface AiCallMeta {
+  provider: LlmProviderId;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -62,6 +63,7 @@ async function completeAndParse<T>(
   return ok({
     ...parsed.data,
     meta: {
+      provider: client.providerId,
       model: result.data.model,
       inputTokens: result.data.inputTokens,
       outputTokens: result.data.outputTokens,

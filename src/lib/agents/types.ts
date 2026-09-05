@@ -29,6 +29,16 @@ export type AgentName =
  */
 export type ControlTier = "AUTOMATIC" | "AI_PREPARED" | "BRIAN_ONLY";
 
+export type AgentConsequence =
+  | "INTERNAL_RECORD"
+  | "ANALYSIS"
+  | "DRAFT"
+  | "EXTERNAL_COMMUNICATION"
+  | "FINANCIAL"
+  | "CONTRACTUAL"
+  | "DESTRUCTIVE"
+  | "ACCOUNT_OWNERSHIP";
+
 export interface AgentContext {
   prospectId?: string;
   /** Which LLM provider this agent's reasoning should route through — see llm/types.ts. */
@@ -37,6 +47,7 @@ export interface AgentContext {
 
 export interface AgentAction {
   controlTier: ControlTier;
+  consequence: AgentConsequence;
   summary: string;
   payload: unknown;
 }
