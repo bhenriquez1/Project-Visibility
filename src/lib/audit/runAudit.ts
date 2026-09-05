@@ -6,17 +6,7 @@ import { lookupPlace } from "@/lib/providers/places";
 import { searchLocalVisibility } from "@/lib/providers/serp";
 import { generateAuditReasoning } from "@/lib/providers/llm";
 import { toJson } from "@/lib/json";
-import type { ScoreLevel } from "@/generated/prisma/client";
-
-function overallLevelFrom(scores: Array<number | null>): ScoreLevel {
-  const available = scores.filter((s): s is number => s !== null);
-  if (available.length === 0) return "NOT_AVAILABLE";
-
-  const avg = available.reduce((sum, s) => sum + s, 0) / available.length;
-  if (avg >= 71) return "STRONG";
-  if (avg >= 41) return "MODERATE";
-  return "NEEDS_ATTENTION";
-}
+import { overallLevelFrom } from "./overallLevel";
 
 export async function runAudit(auditId: string): Promise<void> {
   const audit = await prisma.audit.findUniqueOrThrow({
