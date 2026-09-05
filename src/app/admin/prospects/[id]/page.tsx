@@ -10,6 +10,7 @@ import {
   generateReplyDraftAction,
   logInboundReply,
   rejectMessage,
+  setProspectEmail,
   updateProspectStatus,
 } from "@/lib/actions/prospectActions";
 
@@ -36,8 +37,28 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
         <div>
           <h1 className="text-xl font-semibold">{prospect.businessName}</h1>
           <p className="text-sm text-black/60 dark:text-white/60">
-            {prospect.city} · {prospect.email} · {prospect.website}
+            {prospect.city} · {prospect.email ?? "no email on file"} · {prospect.website}
           </p>
+          {!prospect.email && (
+            <form
+              action={async (formData: FormData) => {
+                "use server";
+                await setProspectEmail(prospect.id, String(formData.get("email")));
+              }}
+              className="mt-2 flex gap-2"
+            >
+              <input
+                name="email"
+                type="email"
+                required
+                placeholder="contact@business.com"
+                className="rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+              />
+              <button className="rounded-md border border-black/15 px-2 py-1 text-xs font-medium dark:border-white/20">
+                Save email
+              </button>
+            </form>
+          )}
         </div>
         <StatusSelect prospectId={prospect.id} status={prospect.status} onChange={updateProspectStatus} />
       </div>

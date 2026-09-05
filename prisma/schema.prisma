@@ -42,7 +42,9 @@ model Prospect {
   businessName String
   website      String
   city         String
-  email        String         @unique
+  // Nullable: V3's Scout Agent creates prospects from public business-search data, which has
+  // no contact email. Unique still holds — Postgres allows multiple NULLs under a unique index.
+  email        String?        @unique
   phone        String?
   source       String         @default("public_audit_form")
   status       ProspectStatus @default(PROSPECT)
@@ -316,4 +318,24 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ─── V3: agent execution audit trail (manually triggered — see src/lib/agents/runner.ts) ───
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+model AgentRun {
+  id              String         @id @default(cuid())
+  agentName       String
+  status          AgentRunStatus @default(RUNNING)
+  actionsProposed Int            @default(0)
+  error           String?
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+
+  @@index([agentName])
 }

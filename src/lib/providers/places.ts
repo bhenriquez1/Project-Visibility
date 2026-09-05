@@ -94,3 +94,61 @@ export async function lookupPlace(
     return requestFailed(err instanceof Error ? err.message : "Google Places request failed.");
   }
 }
+
+export interface NearbyBusiness {
+  placeId: string;
+  businessName: string;
+  website: string;
+  city: string;
+}
+
+const NEARBY_FIELD_MASK = ["places.id", "places.displayName", "places.websiteUri"].join(",");
+
+/**
+ * Public category+city business search — used by the Scout Agent (V3) to find NEW prospects.
+ * Only returns businesses with a public website, since Prospect.website is required to run the
+ * audit pipeline. No OAuth needed (same public-data justification as lookupPlace above).
+ */
+export async function searchNearbyBusinesses(
+  category: string,
+  city: string
+): Promise<ProviderResult<NearbyBusiness[]>> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) {
+    return notConfigured("GOOGLE_PLACES_API_KEY is not set.");
+  }
+
+  try {
+    const res = await fetch(SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": NEARBY_FIELD_MASK,
+      },
+      body: JSON.stringify({ textQuery: `${category} in ${city}` }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      return requestFailed(`Google Places API returned ${res.status}: ${body}`);
+    }
+
+    const json = (await res.json()) as {
+      places?: Array<{ id: string; displayName?: { text?: string }; websiteUri?: string }>;
+    };
+
+    const businesses = (json.places ?? [])
+      .filter((p): p is typeof p & { websiteUri: string } => Boolean(p.websiteUri))
+      .map((p) => ({
+        placeId: p.id,
+        businessName: p.displayName?.text ?? "Unknown business",
+        website: p.websiteUri,
+        city,
+      }));
+
+    return ok(businesses);
+  } catch (err) {
+    return requestFailed(err instanceof Error ? err.message : "Google Places request failed.");
+  }
+}

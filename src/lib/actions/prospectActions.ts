@@ -12,8 +12,23 @@ import type { ProspectStatus } from "@/generated/prisma/client";
 
 async function requireAdmin() {
   const session = await auth();
-  if (!session?.user?.email) throw new Error("Not authenticated.");
+  // Route-level middleware (proxy.ts) already gates /admin/*, but server actions are a second
+  // authorization boundary worth checking explicitly — a customer session also carries an
+  // email, so checking presence alone would let a customer invoke admin-only mutations.
+  if (!session?.user?.email || session.user.role !== "admin") {
+    throw new Error("Not authenticated as an admin.");
+  }
   return session.user.email;
+}
+
+export async function setProspectEmail(prospectId: string, email: string) {
+  await requireAdmin();
+
+  await prisma.prospect.update({ where: { id: prospectId }, data: { email } });
+  await logEvent("email_added", { prospectId });
+
+  revalidatePath(`/admin/prospects/${prospectId}`);
+  revalidatePath("/admin/pipeline");
 }
 
 export async function updateProspectStatus(prospectId: string, status: ProspectStatus) {
@@ -33,6 +48,10 @@ export async function generateOutreachDraftAction(prospectId: string) {
     where: { id: prospectId },
     include: { audits: { orderBy: { requestedAt: "desc" }, take: 1 } },
   });
+
+  if (!prospect.email) {
+    throw new Error("This prospect has no email on file yet — add one before drafting outreach.");
+  }
 
   const latestAudit = prospect.audits[0];
   const narrative = latestAudit?.narrative ?? "No completed audit narrative is available yet.";
@@ -108,6 +127,10 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
     include: { prospect: true },
   });
 
+  if (!message.prospect.email) {
+    throw new Error("This prospect has no email on file — add one before sending.");
+  }
+
   const body = editedBody ?? message.body;
 
   const sendResult = await sendEmail({
@@ -155,6 +178,10 @@ export async function createCheckoutLinkAction(prospectId: string) {
   await requireAdmin();
 
   const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
+
+  if (!prospect.email) {
+    throw new Error("This prospect has no email on file — add one before creating a checkout link.");
+  }
 
   const checkout = await createCheckoutSession({ prospectId, email: prospect.email });
   if (!checkout.ok) {

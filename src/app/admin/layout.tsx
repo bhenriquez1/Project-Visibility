@@ -4,6 +4,7 @@ import { auth, signOut } from "@/lib/auth";
 const NAV = [
   { href: "/admin", label: "Economics" },
   { href: "/admin/pipeline", label: "Pipeline" },
+  { href: "/admin/agents", label: "Agents" },
   { href: "/admin/settings", label: "Settings" },
 ];
 

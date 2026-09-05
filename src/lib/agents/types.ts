@@ -1,11 +1,13 @@
 /**
- * V3 agent architecture — TYPES ONLY. Nothing in this file is wired up or executed; it exists
- * so the eventual Scout → Audit → Sales → Onboarding → Growth → Reputation → Analytics →
- * Retention pipeline (see ROADMAP.md) has a contract to implement against, without building
- * autonomous behavior before V1/V2 have produced the real-world data to justify it.
+ * V3 agent architecture. Scout/Audit/Sales (src/lib/agents/{scout,audit,sales}.ts) implement
+ * this contract and are dispatched by src/lib/agents/runner.ts. Onboarding/Growth/Reputation/
+ * Analytics/Retention (see ROADMAP.md) don't have implementations yet — the `AgentName` union
+ * already lists them so adding one later doesn't require touching this file again.
  *
- * ENGINEERING_STANDARDS.md: "No premature autonomy" applies to this file as much as anywhere —
- * do not add a runner/scheduler/executor here until V3 is actually being built.
+ * ENGINEERING_STANDARDS.md: "No premature autonomy" still applies — `AUTOMATIC` is reserved for
+ * actions with zero external footprint (creating an internal record, running an audit). Nothing
+ * that reaches a real inbox or a customer's public listing is tagged `AUTOMATIC`; see each
+ * agent's own comments for why its actions are tagged the way they are.
  */
 
 import type { LlmProviderId } from "@/lib/providers/llm/types";
@@ -43,8 +45,16 @@ export interface Agent {
   readonly name: AgentName;
   readonly defaultControlTier: ControlTier;
   /**
-   * Proposes actions given the current context. Returning actions is not the same as
-   * executing them — that dispatch/approval loop is V3 scope.
+   * Surveys current state and describes what it would do — read-only, no side effects. The
+   * runner (src/lib/agents/runner.ts) decides whether/how to act on each returned action.
    */
   proposeActions(context: AgentContext): Promise<AgentAction[]>;
+  /**
+   * Performs one proposed action. For `AUTOMATIC` actions this is the real effect (e.g. create
+   * a Prospect row, run an audit). For `AI_PREPARED` actions, "executing" means creating the
+   * human-facing pending-approval record (e.g. a Message row) — it does NOT mean the action's
+   * ultimate effect (sending, posting) happens; that stays behind the existing approve-and-send
+   * UI. The runner never calls this for `BRIAN_ONLY` actions.
+   */
+  execute(action: AgentAction): Promise<void>;
 }
