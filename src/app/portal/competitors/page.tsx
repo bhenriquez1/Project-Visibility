@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getPortalViewer } from "@/lib/impersonation";
 
 export default async function PortalCompetitorsPage() {
-  const session = await auth();
-  const prospectId = session!.user.prospectId!;
+  const viewer = await getPortalViewer();
+  if (!viewer) notFound();
+  const { prospectId } = viewer;
 
   const latestAudit = await prisma.audit.findFirst({
     where: { prospectId, status: { in: ["COMPLETE", "PARTIAL"] } },

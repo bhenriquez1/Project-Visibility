@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runAgent } from "@/lib/agents/runner";
+import { setAgentPaused, setGlobalAutomationPaused } from "@/lib/automationPause";
+import { logEvent } from "@/lib/events";
 import type { AgentName } from "@/lib/agents/types";
 
 async function requireAdmin() {
@@ -18,6 +20,20 @@ export async function runAgentAction(name: AgentName) {
   await runAgent(name);
   revalidatePath("/admin/agents");
   revalidatePath("/admin/pipeline");
+}
+
+export async function setGlobalPauseAction(paused: boolean) {
+  await requireAdmin();
+  await setGlobalAutomationPaused(paused);
+  await logEvent("automation_paused_global_changed", { payload: { paused } });
+  revalidatePath("/admin/agents");
+}
+
+export async function setAgentPauseAction(name: AgentName, paused: boolean) {
+  await requireAdmin();
+  await setAgentPaused(name, paused);
+  await logEvent("automation_paused_agent_changed", { payload: { agentName: name, paused } });
+  revalidatePath("/admin/agents");
 }
 
 export async function updateScoutMarketsAction(formData: FormData) {

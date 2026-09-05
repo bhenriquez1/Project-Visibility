@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { computeRetentionSignals } from "@/lib/retention";
+import { getPortalViewer } from "@/lib/impersonation";
 import { ScoreBadge } from "@/components/ScoreBadge";
 
 const EVENT_LABELS: Record<string, string> = {
@@ -13,8 +14,9 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 export default async function PortalOverviewPage() {
-  const session = await auth();
-  const prospectId = session!.user.prospectId!;
+  const viewer = await getPortalViewer();
+  if (!viewer) notFound();
+  const { prospectId } = viewer;
 
   const [prospect, latestAudit, recentEvents, signals] = await Promise.all([
     prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } }),

@@ -39,6 +39,9 @@ export interface EconomicsSummary {
   averageContributionMarginCents: number | null;
   funnelCounts: Record<string, number>;
   conversionRatePct: number | null;
+  newCustomersLast7Days: number;
+  /** Founding price × open (non-WON/LOST) prospects — a rough estimate, not a weighted forecast. */
+  pipelineValueCents: number;
   perCustomer: CustomerEconomics[];
 }
 
@@ -79,6 +82,17 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
   }
   const conversionRatePct =
     allProspects.length > 0 ? (wonCount / allProspects.length) * 100 : null;
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const newCustomersLast7Days = await prisma.subscription.count({
+    where: { createdAt: { gte: sevenDaysAgo } },
+  });
+
+  const openPipelineCount = allProspects.filter(
+    (p) => p.status !== "WON" && p.status !== "LOST"
+  ).length;
+  const foundingPriceCents = await getSettingCents("founding_price_cents");
+  const pipelineValueCents = openPipelineCount * foundingPriceCents;
 
   const perCustomer: CustomerEconomics[] = [];
   let totalAiCostCents = 0;
@@ -176,6 +190,8 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
     averageContributionMarginCents,
     funnelCounts,
     conversionRatePct,
+    newCustomersLast7Days,
+    pipelineValueCents,
     perCustomer,
   };
 }

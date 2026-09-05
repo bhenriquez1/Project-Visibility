@@ -5,6 +5,7 @@ import { ScoreBadge } from "@/components/ScoreBadge";
 import { StatusSelect } from "@/components/StatusSelect";
 import {
   approveAndSendMessage,
+  composeManualMessage,
   createCheckoutLinkAction,
   generateOutreachDraftAction,
   generateReplyDraftAction,
@@ -193,6 +194,36 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
             Log reply
           </button>
         </form>
+
+        <div className="mt-6 border-t border-black/10 pt-4 dark:border-white/10">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+            Write one yourself (human takeover)
+          </h3>
+          <form
+            action={async (formData: FormData) => {
+              "use server";
+              const subject = String(formData.get("subject") ?? "").trim();
+              const body = String(formData.get("body") ?? "").trim();
+              if (subject && body) await composeManualMessage(prospect.id, subject, body);
+            }}
+            className="mt-2 flex flex-col gap-2"
+          >
+            <input
+              name="subject"
+              placeholder="Subject"
+              className="rounded-md border border-black/15 p-2 text-sm dark:border-white/20 dark:bg-black/20"
+            />
+            <textarea
+              name="body"
+              placeholder="Write the message yourself, no AI draft…"
+              rows={4}
+              className="w-full rounded-md border border-black/15 p-2 text-sm dark:border-white/20 dark:bg-black/20"
+            />
+            <button className="self-start rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
+              Add to pending approval
+            </button>
+          </form>
+        </div>
       </section>
     </div>
   );

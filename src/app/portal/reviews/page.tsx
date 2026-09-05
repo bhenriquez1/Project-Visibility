@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getPortalViewer } from "@/lib/impersonation";
 import {
   approveAndPostReviewReply,
   generateReviewReplyDraftAction,
@@ -10,8 +11,9 @@ import {
 } from "@/lib/actions/customerActions";
 
 export default async function PortalReviewsPage() {
-  const session = await auth();
-  const prospectId = session!.user.prospectId!;
+  const viewer = await getPortalViewer();
+  if (!viewer) notFound();
+  const { prospectId, isImpersonating } = viewer;
 
   const [connection, reviews] = await Promise.all([
     prisma.googleBusinessConnection.findUnique({ where: { prospectId } }),
@@ -22,7 +24,7 @@ export default async function PortalReviewsPage() {
     <div className="max-w-2xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Reviews</h1>
-        {connection ? (
+        {connection && !isImpersonating ? (
           <form
             action={async () => {
               "use server";
@@ -60,7 +62,7 @@ export default async function PortalReviewsPage() {
             </div>
             <p className="mt-2 italic">{review.reviewComment}</p>
 
-            {review.status === "DRAFT" && (
+            {review.status === "DRAFT" && !isImpersonating && (
               <form
                 action={async () => {
                   "use server";
@@ -74,7 +76,7 @@ export default async function PortalReviewsPage() {
               </form>
             )}
 
-            {review.status === "PENDING_CUSTOMER_APPROVAL" && (
+            {review.status === "PENDING_CUSTOMER_APPROVAL" && !isImpersonating && (
               <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
                 <form
                   action={async (formData: FormData) => {
@@ -101,6 +103,11 @@ export default async function PortalReviewsPage() {
                   <button className="mt-2 text-xs text-red-700 underline dark:text-red-400">Reject</button>
                 </form>
               </div>
+            )}
+            {review.status === "PENDING_CUSTOMER_APPROVAL" && isImpersonating && (
+              <p className="mt-3 rounded-md bg-black/5 p-3 text-black/70 dark:bg-white/10 dark:text-white/70">
+                Draft awaiting the customer&apos;s approval: {review.draftReply}
+              </p>
             )}
 
             {review.status === "POSTED" && (

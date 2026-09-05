@@ -2,9 +2,16 @@ import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
 
 const NAV = [
-  { href: "/admin", label: "Economics" },
-  { href: "/admin/pipeline", label: "Pipeline" },
+  { href: "/admin", label: "Executive & Financials" },
+  { href: "/admin/pipeline", label: "Prospecting" },
+  { href: "/admin/inbox", label: "Sales Inbox" },
+  { href: "/admin/customers", label: "Customers" },
   { href: "/admin/agents", label: "Agents" },
+  { href: "/admin/approvals", label: "Approval Center" },
+  { href: "/admin/ai-trace", label: "AI Trace" },
+  { href: "/admin/data-sources", label: "Data Sources" },
+  { href: "/admin/audit-log", label: "Audit Log" },
+  { href: "/admin/system", label: "System Health" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
@@ -14,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-screen">
       <aside className="flex w-56 flex-col border-r border-black/10 p-4 dark:border-white/10">
-        <div className="mb-6 text-sm font-semibold">Project Visibility</div>
+        <div className="mb-6 text-sm font-semibold">Owner Command Center</div>
         <nav className="flex flex-col gap-1 text-sm">
           {NAV.map((item) => (
             <Link

@@ -8,6 +8,7 @@ import { logAiUsage } from "@/lib/cost";
 import { sendEmail } from "@/lib/providers/email";
 import { generateOutreachDraft, generateReplyDraft } from "@/lib/providers/llm";
 import { createCheckoutSession } from "@/lib/providers/stripe";
+import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
 
 async function requireAdmin() {
@@ -119,8 +120,32 @@ export async function generateReplyDraftAction(prospectId: string) {
   revalidatePath(`/admin/prospects/${prospectId}`);
 }
 
+/** "Human takeover" — Brian composing a message himself, not starting from an AI draft. Reuses
+ * the same PENDING_APPROVAL → approve-and-send path as every AI-drafted message; the only
+ * difference is aiGenerated: false, so it's visible as human-authored in the Sales Inbox. */
+export async function composeManualMessage(prospectId: string, subject: string, body: string) {
+  await requireAdmin();
+
+  await prisma.message.create({
+    data: {
+      prospectId,
+      direction: "OUTBOUND",
+      status: "PENDING_APPROVAL",
+      approvalTier: "BRIAN_ONLY",
+      subject,
+      body,
+      aiGenerated: false,
+    },
+  });
+
+  await logEvent("outreach_composed_manually", { prospectId });
+  revalidatePath(`/admin/prospects/${prospectId}`);
+  revalidatePath("/admin/inbox");
+}
+
 export async function approveAndSendMessage(messageId: string, editedBody?: string) {
   const approver = await requireAdmin();
+  await assertAutomationNotPaused(); // global pause stops outbound sends immediately, not just future agent runs
 
   const message = await prisma.message.findUniqueOrThrow({
     where: { id: messageId },

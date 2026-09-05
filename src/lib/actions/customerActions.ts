@@ -15,9 +15,17 @@ import {
   assertMonthlyAiEntitlement,
   assertMonthlyEventEntitlement,
 } from "@/lib/entitlements";
+import { assertAutomationNotPaused } from "@/lib/automationPause";
 
 async function requireCustomer(): Promise<string> {
   const session = await auth();
+  // An impersonating admin (role "admin") never has session.user.prospectId set — that's only
+  // populated for real customer logins — so this naturally rejects every write while
+  // impersonating. The distinct message just makes the reason clear rather than implying the
+  // admin isn't logged in at all.
+  if (session?.user?.role === "admin") {
+    throw new Error("Read-only: you're viewing as a customer. Stop impersonating to make changes.");
+  }
   if (!session?.user || session.user.role !== "customer" || !session.user.prospectId) {
     throw new Error("Not authenticated as a customer.");
   }
@@ -115,6 +123,7 @@ export async function generateReviewReplyDraftAction(reviewReplyId: string) {
 
 export async function approveAndPostReviewReply(reviewReplyId: string, editedReply?: string) {
   const prospectId = await requireCustomer();
+  await assertAutomationNotPaused(); // global pause stops outbound posts immediately too
   const reviewReply = await requireOwnedReviewReply(reviewReplyId, prospectId);
 
   const connection = await prisma.googleBusinessConnection.findUnique({ where: { prospectId } });
@@ -192,7 +201,12 @@ export async function askGrowthManagerAction(question: string): Promise<string> 
   }
 
   await logAiUsage("GrowthManagerQuestion", prospectId, answer.data.meta);
-  await logEvent("growth_manager_question_asked", { prospectId });
+  // Full content persisted (not just that a question happened) so the Owner Command Center's
+  // Sales Inbox / AI Trace can show every AI conversation, not just that one occurred.
+  await logEvent("growth_manager_question_asked", {
+    prospectId,
+    payload: { question, answer: answer.data.answer },
+  });
 
   return answer.data.answer;
 }

@@ -1,6 +1,11 @@
+import { notFound } from "next/navigation";
 import { AskGrowthManagerForm } from "@/components/AskGrowthManagerForm";
+import { getPortalViewer } from "@/lib/impersonation";
 
-export default function PortalAskPage() {
+export default async function PortalAskPage() {
+  const viewer = await getPortalViewer();
+  if (!viewer) notFound();
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-xl font-semibold">Ask your AI Growth Manager</h1>
@@ -9,7 +14,14 @@ export default function PortalAskPage() {
         your behalf.
       </p>
       <div className="mt-6">
-        <AskGrowthManagerForm />
+        {viewer.isImpersonating ? (
+          <p className="text-sm text-black/50 dark:text-white/50">
+            Asking a question is disabled while viewing as a customer (it would use their AI
+            budget).
+          </p>
+        ) : (
+          <AskGrowthManagerForm />
+        )}
       </div>
     </div>
   );

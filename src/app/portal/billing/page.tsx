@@ -1,18 +1,19 @@
 export const dynamic = "force-dynamic";
 
+import { notFound } from "next/navigation";
 import { openBillingPortalAction } from "@/lib/actions/customerActions";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getPortalViewer } from "@/lib/impersonation";
 import { resolveStoredPlan } from "@/lib/plans";
 
 export default async function PortalBillingPage() {
-  const session = await auth();
-  const subscription = session?.user.prospectId
-    ? await prisma.subscription.findFirst({
-        where: { prospectId: session.user.prospectId },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  const viewer = await getPortalViewer();
+  if (!viewer) notFound();
+
+  const subscription = await prisma.subscription.findFirst({
+    where: { prospectId: viewer.prospectId },
+    orderBy: { createdAt: "desc" },
+  });
   const plan = subscription ? resolveStoredPlan(subscription.plan) : null;
 
   return (
@@ -51,17 +52,23 @@ export default async function PortalBillingPage() {
           </p>
         </section>
       ) : null}
-      <form
-        action={async () => {
-          "use server";
-          await openBillingPortalAction();
-        }}
-        className="mt-6"
-      >
-        <button className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black">
-          Open billing portal
-        </button>
-      </form>
+      {viewer.isImpersonating ? (
+        <p className="mt-6 text-xs text-black/50 dark:text-white/50">
+          Billing portal access is disabled while viewing as a customer.
+        </p>
+      ) : (
+        <form
+          action={async () => {
+            "use server";
+            await openBillingPortalAction();
+          }}
+          className="mt-6"
+        >
+          <button className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black">
+            Open billing portal
+          </button>
+        </form>
+      )}
     </div>
   );
 }

@@ -2,7 +2,13 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { listRunnableAgents } from "@/lib/agents/runner";
-import { runAgentAction, updateScoutMarketsAction } from "@/lib/actions/agentActions";
+import { isGlobalAutomationPaused, isAgentPaused } from "@/lib/automationPause";
+import {
+  runAgentAction,
+  setAgentPauseAction,
+  setGlobalPauseAction,
+  updateScoutMarketsAction,
+} from "@/lib/actions/agentActions";
 import type { AgentName } from "@/lib/agents/types";
 
 const TIER_STYLES: Record<string, string> = {
@@ -11,12 +17,33 @@ const TIER_STYLES: Record<string, string> = {
   BRIAN_ONLY: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
+const ALL_AGENT_NAMES: AgentName[] = [
+  "scout",
+  "audit",
+  "sales",
+  "onboarding",
+  "growth",
+  "reputation",
+  "analytics",
+  "retention",
+];
+
 export default async function AgentsPage() {
-  const agents = listRunnableAgents();
-  const [runs, marketsSetting] = await Promise.all([
+  const implemented = listRunnableAgents();
+  const implementedByName = new Map(implemented.map((a) => [a.name, a]));
+
+  const [runs, marketsSetting, globalPaused, perAgentPaused] = await Promise.all([
     prisma.agentRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
     prisma.setting.findUnique({ where: { key: "scout_target_markets" } }),
+    isGlobalAutomationPaused(),
+    Promise.all(ALL_AGENT_NAMES.map(async (name) => [name, await isAgentPaused(name)] as const)),
   ]);
+  const pausedByName = new Map(perAgentPaused);
+
+  const lastRunByAgent = new Map<string, (typeof runs)[number]>();
+  for (const run of runs) {
+    if (!lastRunByAgent.has(run.agentName)) lastRunByAgent.set(run.agentName, run);
+  }
 
   return (
     <div className="max-w-3xl">
@@ -27,32 +54,103 @@ export default async function AgentsPage() {
         account-ownership actions are blocked from autonomous execution.
       </p>
 
-      <div className="mt-6 flex flex-col gap-3">
-        {agents.map((agent) => (
-          <div
-            key={agent.name}
-            className="flex items-center justify-between rounded-lg border border-black/10 p-4 dark:border-white/10"
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium capitalize">{agent.name} agent</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TIER_STYLES[agent.defaultControlTier]}`}>
-                  {agent.defaultControlTier}
-                </span>
-              </div>
-            </div>
-            <form
-              action={async () => {
-                "use server";
-                await runAgentAction(agent.name as AgentName);
-              }}
-            >
-              <button className="rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
-                Run now
-              </button>
-            </form>
+      <section
+        className={`mt-6 flex items-center justify-between rounded-lg border p-4 text-sm ${
+          globalPaused
+            ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+            : "border-black/10 dark:border-white/10"
+        }`}
+      >
+        <div>
+          <div className="font-medium">Global automation pause</div>
+          <div className="text-xs text-black/50 dark:text-white/50">
+            {globalPaused
+              ? "PAUSED — no agent can run, no message/review reply can be sent or posted."
+              : "Running normally."}
           </div>
-        ))}
+        </div>
+        <form
+          action={async () => {
+            "use server";
+            await setGlobalPauseAction(!globalPaused);
+          }}
+        >
+          <button
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+              globalPaused
+                ? "bg-black text-white dark:bg-white dark:text-black"
+                : "border border-red-300 text-red-700 dark:border-red-700 dark:text-red-400"
+            }`}
+          >
+            {globalPaused ? "Resume automation" : "Pause everything"}
+          </button>
+        </form>
+      </section>
+
+      <div className="mt-6 flex flex-col gap-3">
+        {ALL_AGENT_NAMES.map((name) => {
+          const agent = implementedByName.get(name);
+          const lastRun = lastRunByAgent.get(name);
+          const paused = pausedByName.get(name) ?? false;
+
+          return (
+            <div
+              key={name}
+              className="flex items-center justify-between rounded-lg border border-black/10 p-4 dark:border-white/10"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium capitalize">{name} agent</span>
+                  {agent ? (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TIER_STYLES[agent.defaultControlTier]}`}>
+                      {agent.defaultControlTier}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-semibold text-black/50 dark:bg-white/10 dark:text-white/50">
+                      not implemented
+                    </span>
+                  )}
+                  {paused && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                      paused
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-black/50 dark:text-white/50">
+                  {lastRun
+                    ? `Last run: ${lastRun.status.toLowerCase()} · ${lastRun.actionsProposed} action${lastRun.actionsProposed === 1 ? "" : "s"} · ${lastRun.startedAt.toLocaleString()}`
+                    : agent
+                      ? "Never run."
+                      : "No implementation to run yet — see ROADMAP.md."}
+                </div>
+              </div>
+              {agent && (
+                <div className="flex gap-2">
+                  <form
+                    action={async () => {
+                      "use server";
+                      await setAgentPauseAction(name, !paused);
+                    }}
+                  >
+                    <button className="rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
+                      {paused ? "Unpause" : "Pause"}
+                    </button>
+                  </form>
+                  <form
+                    action={async () => {
+                      "use server";
+                      await runAgentAction(name);
+                    }}
+                  >
+                    <button className="rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
+                      Run now
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <section className="mt-10">

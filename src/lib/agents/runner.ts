@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
+import { assertAutomationNotPaused } from "@/lib/automationPause";
 import { scoutAgent } from "./scout";
 import { auditAgent } from "./audit";
 import { salesAgent } from "./sales";
@@ -25,6 +26,8 @@ export async function runAgent(name: AgentName): Promise<{ agentRunId: string }>
   if (!agent) {
     throw new Error(`"${name}" has no runnable implementation yet.`);
   }
+
+  await assertAutomationNotPaused(name);
 
   const agentRun = await prisma.agentRun.create({
     data: { agentName: name, status: "RUNNING" },

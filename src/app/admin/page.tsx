@@ -28,12 +28,15 @@ export default async function EconomicsDashboardPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold">Is this making money?</h1>
+      <h1 className="text-xl font-semibold">Executive &amp; Financials</h1>
+      <p className="mt-1 text-sm text-black/60 dark:text-white/60">Is this making money?</p>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="MRR" value={formatCents(econ.mrrCents)} />
         <Stat label="ARR" value={formatCents(econ.arrCents)} />
         <Stat label="Active customers" value={String(econ.activeCustomerCount)} />
+        <Stat label="New customers (7d)" value={String(econ.newCustomersLast7Days)} />
+        <Stat label="Pipeline value (est.)" value={formatCents(econ.pipelineValueCents)} />
         <Stat
           label="Customer retention"
           value={econ.retentionRate !== null ? `${(econ.retentionRate * 100).toFixed(1)}%` : "N/A"}
