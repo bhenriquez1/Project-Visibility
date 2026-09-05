@@ -60,8 +60,43 @@ doesn't exist.
 
 ## Status
 
-**Waiting on infrastructure as of now.** Every DB-backed route in the app (the audit funnel,
-admin CRM, billing, economics dashboard) already fails loudly and explicitly when the database
-is unreachable — see the "Can't reach database server" errors surfaced in `npm run dev` logs and
-the generic-but-honest error shown to end users. That's expected until this handoff completes;
-it is not a bug to route around with mock data.
+`DATABASE_URL` now points at a real Supabase instance (as of this writing). Migrations
+(`npx prisma migrate dev --name init`) and `npm run seed` still need to be run and verified via
+`GET /api/health` before any DB-backed route can be trusted — until that's confirmed, treat every
+DB-backed route in the app (the audit funnel, admin CRM, billing, economics dashboard) as
+"waiting on infrastructure," not broken code. That's the expected, honest state; it is not a bug
+to route around with mock data.
+
+**Working-directory coordination:** Claude and Codex have both been operating directly in this
+same local working directory/`.git` at the same time, which has already corrupted `.git`
+metadata once (recovered — no commits or data were lost, `main` still matched `origin/main`
+exactly). Avoid running `git`, `npm install`, or `next dev`/`next build` in this folder at the
+same moment as the other agent. Prefer: finish a change, commit, and say so, before the other
+agent's next write — or work from separate clones/worktrees and sync via `git push`/`pull`
+instead of sharing one working tree's `.git` internals live.
+
+## Addendum: Google OAuth (V2 — customer sign-in + Business Profile access)
+
+V2 adds "Sign in with Google" for customers, which also captures the OAuth consent needed to
+read/reply to their Google reviews. This needs a Google Cloud OAuth 2.0 Client, same account as
+the existing Places API project:
+
+1. **Enable APIs**: "Google Business Profile API" (via the API Library), plus verify the split
+   Account Management and Business Information APIs are enabled. Note: the Account Management
+   API has shipped with a default quota of **0** for new projects — enabling it is not enough,
+   a quota increase must be requested from Google (via the in-console quota request flow)
+   before `accounts.list` will return anything. Flag this early; it can take time to be granted.
+2. **OAuth consent screen**: set publishing status to **Testing** (not Production) — this avoids
+   Google's full app-verification process, which isn't worth pursuing at founding-customer scale
+   (Testing supports up to 100 test users). Add each founding customer's Google account email as
+   a test user as they're onboarded.
+3. **Create an OAuth 2.0 Client ID** (Application type: **Web application**). Authorized redirect
+   URI: `{NEXTAUTH_URL}/api/auth/callback/google` (e.g. `http://localhost:3000/api/auth/callback/google`
+   for local dev).
+4. **Scope requested by the app**: `https://www.googleapis.com/auth/business.manage` (already
+   wired into `src/lib/auth.ts` — nothing to configure beyond the consent screen listing it).
+5. Put the resulting values in `.env`: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`.
+
+Verification: with those two env vars unset, `/portal/login` shows an explicit "not configured"
+message. Once set, restart the dev server and `/portal/login` shows a working "Sign in with
+Google" button.

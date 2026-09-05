@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { computeEconomics } from "@/lib/economics";
 import { formatCents } from "@/lib/money";
+import { computeRetentionSignals, type RetentionRisk } from "@/lib/retention";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -11,8 +12,19 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+const RISK_STYLES: Record<RetentionRisk, string> = {
+  low: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  moderate: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  high: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+
 export default async function EconomicsDashboardPage() {
   const econ = await computeEconomics();
+  const retentionByProspect = new Map(
+    await Promise.all(
+      econ.perCustomer.map(async (c) => [c.prospectId, await computeRetentionSignals(c.prospectId)] as const)
+    )
+  );
 
   return (
     <div>
@@ -77,21 +89,30 @@ export default async function EconomicsDashboardPage() {
                   <th className="py-2 pr-4">Infra</th>
                   <th className="py-2 pr-4">Support</th>
                   <th className="py-2 pr-4">Margin</th>
+                  <th className="py-2 pr-4">Retention risk</th>
                 </tr>
               </thead>
               <tbody>
-                {econ.perCustomer.map((c) => (
-                  <tr key={c.prospectId} className="border-b border-black/5 dark:border-white/5">
-                    <td className="py-2 pr-4">{c.businessName}</td>
-                    <td className="py-2 pr-4">{formatCents(c.mrrCents)}</td>
-                    <td className="py-2 pr-4">{formatCents(c.paymentFeeCents)}</td>
-                    <td className="py-2 pr-4">{formatCents(c.aiCostCents)}</td>
-                    <td className="py-2 pr-4">{formatCents(c.dataCostCents)}</td>
-                    <td className="py-2 pr-4">{formatCents(c.infraShareCents)}</td>
-                    <td className="py-2 pr-4">{formatCents(c.supportCostCents)}</td>
-                    <td className="py-2 pr-4 font-medium">{formatCents(c.contributionMarginCents)}</td>
-                  </tr>
-                ))}
+                {econ.perCustomer.map((c) => {
+                  const risk = retentionByProspect.get(c.prospectId)?.riskLevel ?? "low";
+                  return (
+                    <tr key={c.prospectId} className="border-b border-black/5 dark:border-white/5">
+                      <td className="py-2 pr-4">{c.businessName}</td>
+                      <td className="py-2 pr-4">{formatCents(c.mrrCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.paymentFeeCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.aiCostCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.dataCostCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.infraShareCents)}</td>
+                      <td className="py-2 pr-4">{formatCents(c.supportCostCents)}</td>
+                      <td className="py-2 pr-4 font-medium">{formatCents(c.contributionMarginCents)}</td>
+                      <td className="py-2 pr-4">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${RISK_STYLES[risk]}`}>
+                          {risk}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

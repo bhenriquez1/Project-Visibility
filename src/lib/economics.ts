@@ -79,13 +79,18 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
     });
     const auditIds = audits.map((a) => a.id);
 
-    const [auditAiUsage, messageAiUsage, dataUsage] = await Promise.all([
+    const [auditAiUsage, prospectKeyedAiUsage, dataUsage] = await Promise.all([
       prisma.aiUsage.aggregate({
         where: { relatedType: "Audit", relatedId: { in: auditIds } },
         _sum: { costCents: true },
       }),
+      // Message (V1 outreach), ReviewReply and GrowthManagerQuestion (V2) all key AiUsage by
+      // prospectId directly rather than by their own row id — see lib/actions/*.ts.
       prisma.aiUsage.aggregate({
-        where: { relatedType: "Message", relatedId: sub.prospectId },
+        where: {
+          relatedType: { in: ["Message", "ReviewReply", "GrowthManagerQuestion"] },
+          relatedId: sub.prospectId,
+        },
         _sum: { costCents: true },
       }),
       prisma.apiCallLog.aggregate({
@@ -94,7 +99,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
       }),
     ]);
 
-    const aiCostCents = (auditAiUsage._sum.costCents ?? 0) + (messageAiUsage._sum.costCents ?? 0);
+    const aiCostCents = (auditAiUsage._sum.costCents ?? 0) + (prospectKeyedAiUsage._sum.costCents ?? 0);
     const dataCostCents = dataUsage._sum.costCents ?? 0;
     const paymentFeeCents = sub.priceCents * STRIPE_PERCENT_FEE + STRIPE_FLAT_FEE_CENTS;
 

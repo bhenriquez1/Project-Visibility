@@ -159,3 +159,61 @@ Respond with JSON: {"subject": string, "body": string}`;
 
   return completeAndParse(client, prompt, draftSchema);
 }
+
+const reviewReplySchema = z.object({ reply: z.string() });
+export type ReviewReplyOutput = z.infer<typeof reviewReplySchema> & { meta: AiCallMeta };
+
+export async function generateReviewReplyDraft(input: {
+  businessName: string;
+  reviewerName: string | null;
+  starRating: number | null;
+  reviewComment: string | null;
+}): Promise<ProviderResult<ReviewReplyOutput>> {
+  const client = getClient();
+  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+
+  const prompt = `Draft a short, genuine reply from "${input.businessName}" to this Google review.
+Match the tone to the rating — grateful for positive reviews, calm and solution-oriented for
+negative ones, never defensive or dismissive. No generic corporate language. Keep it under 80
+words. Never make promises the business hasn't asked to make.
+
+Reviewer: ${input.reviewerName ?? "Anonymous"}
+Rating: ${input.starRating ?? "unknown"}/5
+Review: ${input.reviewComment ?? "(no comment text)"}
+
+Respond with JSON: {"reply": string}`;
+
+  return completeAndParse(client, prompt, reviewReplySchema);
+}
+
+const answerSchema = z.object({ answer: z.string() });
+export type AnswerOutput = z.infer<typeof answerSchema> & { meta: AiCallMeta };
+
+/**
+ * "Ask your AI Growth Manager" — grounded Q&A only. This must never be given the ability to
+ * take actions; it answers questions about the customer's own data and nothing else. Adding
+ * tool-calling/execution here would cross into V3 autonomy — don't.
+ */
+export async function answerGrowthManagerQuestion(input: {
+  businessName: string;
+  question: string;
+  auditNarrative: string | null;
+  reviewSummary: string;
+}): Promise<ProviderResult<AnswerOutput>> {
+  const client = getClient();
+  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+
+  const prompt = `You are a growth advisor answering one question for "${input.businessName}"
+based only on the data below. If the data doesn't cover what they're asking, say so plainly
+rather than guessing. Never promise a specific Google ranking. You can only answer questions —
+you cannot take any action on their behalf.
+
+Latest audit summary: ${input.auditNarrative ?? "No completed audit yet."}
+Review summary: ${input.reviewSummary}
+
+Question: ${input.question}
+
+Respond with JSON: {"answer": string}`;
+
+  return completeAndParse(client, prompt, answerSchema);
+}

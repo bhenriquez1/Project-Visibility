@@ -36,6 +36,24 @@ export async function createCheckoutSession(input: {
   }
 }
 
+export async function createBillingPortalSession(input: {
+  stripeCustomerId: string;
+  returnUrl: string;
+}): Promise<ProviderResult<{ url: string }>> {
+  const client = getClient();
+  if (!client) return notConfigured("STRIPE_SECRET_KEY is not set.");
+
+  try {
+    const session = await client.billingPortal.sessions.create({
+      customer: input.stripeCustomerId,
+      return_url: input.returnUrl,
+    });
+    return ok({ url: session.url });
+  } catch (err) {
+    return requestFailed(err instanceof Error ? err.message : "Stripe request failed.");
+  }
+}
+
 export function getStripeClientForWebhook(): Stripe | null {
   return getClient();
 }
