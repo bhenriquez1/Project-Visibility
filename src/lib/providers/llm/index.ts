@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { notConfigured, ok, requestFailed, type ProviderResult } from "../types";
+import { createAnthropicClient } from "./anthropic";
 import { createOpenAiClient } from "./openai";
 import type { LlmClient, LlmProviderId } from "./types";
 import type { WebsiteSignals } from "../website";
@@ -12,10 +13,23 @@ import type { SerpSignals } from "../serp";
  */
 const REGISTRY: Record<LlmProviderId, () => LlmClient | null> = {
   openai: createOpenAiClient,
+  anthropic: createAnthropicClient,
 };
 
-function getClient(providerId: LlmProviderId = "openai"): LlmClient | null {
-  return REGISTRY[providerId]();
+function configuredClient(): { client: LlmClient | null; detail: string } {
+  const configured = (process.env.AI_PROVIDER || "openai").trim().toLowerCase();
+  if (configured !== "openai" && configured !== "anthropic") {
+    return {
+      client: null,
+      detail: `AI_PROVIDER must be "openai" or "anthropic"; received "${configured}".`,
+    };
+  }
+
+  const providerId: LlmProviderId = configured;
+  return {
+    client: REGISTRY[providerId](),
+    detail: `${providerId === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} is not set.`,
+  };
 }
 
 export interface AiCallMeta {
@@ -82,8 +96,8 @@ export interface AuditReasoningInput {
 export async function generateAuditReasoning(
   input: AuditReasoningInput
 ): Promise<ProviderResult<AuditReasoningOutput>> {
-  const client = getClient();
-  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
 
   const prompt = `You are auditing the local online visibility of "${input.businessName}" in ${input.city}.
 
@@ -123,8 +137,8 @@ export async function generateOutreachDraft(input: {
   auditNarrative: string;
   founderName?: string;
 }): Promise<ProviderResult<DraftOutput>> {
-  const client = getClient();
-  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
 
   const prompt = `Write a short, specific, non-salesy cold email to "${input.businessName}" offering
 the free local-visibility audit findings below as a conversation starter. Sign off as ${input.founderName ?? "Brian"}
@@ -142,8 +156,8 @@ export async function generateReplyDraft(input: {
   businessName: string;
   conversationSoFar: { direction: "OUTBOUND" | "INBOUND"; body: string }[];
 }): Promise<ProviderResult<DraftOutput>> {
-  const client = getClient();
-  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
 
   const thread = input.conversationSoFar
     .map((m) => `${m.direction === "OUTBOUND" ? "Us" : input.businessName}: ${m.body}`)
@@ -169,8 +183,8 @@ export async function generateReviewReplyDraft(input: {
   starRating: number | null;
   reviewComment: string | null;
 }): Promise<ProviderResult<ReviewReplyOutput>> {
-  const client = getClient();
-  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
 
   const prompt = `Draft a short, genuine reply from "${input.businessName}" to this Google review.
 Match the tone to the rating — grateful for positive reviews, calm and solution-oriented for
@@ -200,8 +214,8 @@ export async function answerGrowthManagerQuestion(input: {
   auditNarrative: string | null;
   reviewSummary: string;
 }): Promise<ProviderResult<AnswerOutput>> {
-  const client = getClient();
-  if (!client) return notConfigured("OPENAI_API_KEY is not set.");
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
 
   const prompt = `You are a growth advisor answering one question for "${input.businessName}"
 based only on the data below. If the data doesn't cover what they're asking, say so plainly

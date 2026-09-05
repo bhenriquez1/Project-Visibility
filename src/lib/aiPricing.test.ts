@@ -18,4 +18,9 @@ describe("costCentsFor", () => {
   it("returns 0 cost for zero tokens on a known model", () => {
     expect(costCentsFor("openai", "gpt-4o-mini", 0, 0)).toEqual({ ok: true, costCents: 0 });
   });
+
+  it("computes Claude Haiku 4.5 cost from Anthropic pricing", () => {
+    const result = costCentsFor("anthropic", "claude-haiku-4-5-20251001", 1_000_000, 1_000_000);
+    expect(result).toEqual({ ok: true, costCents: 600 });
+  });
 });

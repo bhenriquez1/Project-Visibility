@@ -14,6 +14,10 @@ const PRICING_CENTS_PER_MILLION_TOKENS: Record<
     "gpt-4o-mini": { input: 15, output: 60 },
     "gpt-4o": { input: 250, output: 1000 },
   },
+  anthropic: {
+    "claude-haiku-4-5": { input: 100, output: 500 },
+    "claude-haiku-4-5-20251001": { input: 100, output: 500 },
+  },
 };
 
 export function costCentsFor(
