@@ -1,19 +1,21 @@
-import OpenAI from "openai";
 import { z } from "zod";
-import { notConfigured, ok, requestFailed, type ProviderResult } from "./types";
-import { costCentsFor } from "@/lib/aiPricing";
-import type { WebsiteSignals } from "./website";
-import type { PlaceSignals } from "./places";
-import type { SerpSignals } from "./serp";
+import { notConfigured, ok, requestFailed, type ProviderResult } from "../types";
+import { createOpenAiClient } from "./openai";
+import type { LlmClient, LlmProviderId } from "./types";
+import type { WebsiteSignals } from "../website";
+import type { PlaceSignals } from "../places";
+import type { SerpSignals } from "../serp";
 
-function getClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-  return new OpenAI({ apiKey });
-}
+/**
+ * Provider registry — the seam V2/V3 route through. Adding a provider (e.g. Anthropic for a
+ * specific agent task) means adding one factory here, not touching the task functions below.
+ */
+const REGISTRY: Record<LlmProviderId, () => LlmClient | null> = {
+  openai: createOpenAiClient,
+};
 
-function getModel(): string {
-  return process.env.OPENAI_MODEL || "gpt-4o-mini";
+function getClient(providerId: LlmProviderId = "openai"): LlmClient | null {
+  return REGISTRY[providerId]();
 }
 
 export interface AiCallMeta {
@@ -21,6 +23,37 @@ export interface AiCallMeta {
   inputTokens: number;
   outputTokens: number;
   costCents: number;
+}
+
+async function completeAndParse<T>(
+  client: LlmClient,
+  prompt: string,
+  schema: z.ZodType<T>
+): Promise<ProviderResult<T & { meta: AiCallMeta }>> {
+  const result = await client.completeJson(prompt);
+  if (!result.ok) return result;
+
+  let json: unknown;
+  try {
+    json = JSON.parse(result.data.raw);
+  } catch {
+    return requestFailed(`${client.providerId} returned invalid JSON.`);
+  }
+
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    return requestFailed(`${client.providerId} response didn't match the expected shape: ${parsed.error.message}`);
+  }
+
+  return ok({
+    ...parsed.data,
+    meta: {
+      model: result.data.model,
+      inputTokens: result.data.inputTokens,
+      outputTokens: result.data.outputTokens,
+      costCents: result.data.costCents,
+    },
+  });
 }
 
 const scoreSchema = z.number().int().min(0).max(100).nullable();
@@ -52,8 +85,6 @@ export async function generateAuditReasoning(
   const client = getClient();
   if (!client) return notConfigured("OPENAI_API_KEY is not set.");
 
-  const model = getModel();
-
   const prompt = `You are auditing the local online visibility of "${input.businessName}" in ${input.city}.
 
 Score ONLY the dimensions where real data is provided below (0-100, higher is better). For any
@@ -80,33 +111,7 @@ plain-language summary and the top 2-3 concrete opportunities, grounded only in 
 Respond with JSON matching this exact shape:
 {"visibilityScore": number|null, "profileScore": number|null, "reputationScore": number|null, "websiteSeoScore": number|null, "competitorGapScore": number|null, "conversionScore": number|null, "narrative": string}`;
 
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return requestFailed("OpenAI returned an empty response.");
-
-    const parsed = auditReasoningSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) {
-      return requestFailed(`OpenAI response didn't match the expected shape: ${parsed.error.message}`);
-    }
-
-    const inputTokens = completion.usage?.prompt_tokens ?? 0;
-    const outputTokens = completion.usage?.completion_tokens ?? 0;
-    const pricing = costCentsFor(model, inputTokens, outputTokens);
-    if (!pricing.ok) return requestFailed(pricing.detail);
-
-    return ok({
-      ...parsed.data,
-      meta: { model, inputTokens, outputTokens, costCents: pricing.costCents },
-    });
-  } catch (err) {
-    return requestFailed(err instanceof Error ? err.message : "OpenAI request failed.");
-  }
+  return completeAndParse(client, prompt, auditReasoningSchema);
 }
 
 const draftSchema = z.object({ subject: z.string(), body: z.string() });
@@ -120,7 +125,6 @@ export async function generateOutreachDraft(input: {
 }): Promise<ProviderResult<DraftOutput>> {
   const client = getClient();
   if (!client) return notConfigured("OPENAI_API_KEY is not set.");
-  const model = getModel();
 
   const prompt = `Write a short, specific, non-salesy cold email to "${input.businessName}" offering
 the free local-visibility audit findings below as a conversation starter. Sign off as ${input.founderName ?? "Brian"}
@@ -131,30 +135,7 @@ Audit narrative: ${input.auditNarrative}
 
 Respond with JSON: {"subject": string, "body": string}`;
 
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return requestFailed("OpenAI returned an empty response.");
-
-    const parsed = draftSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) {
-      return requestFailed(`OpenAI response didn't match the expected shape: ${parsed.error.message}`);
-    }
-
-    const inputTokens = completion.usage?.prompt_tokens ?? 0;
-    const outputTokens = completion.usage?.completion_tokens ?? 0;
-    const pricing = costCentsFor(model, inputTokens, outputTokens);
-    if (!pricing.ok) return requestFailed(pricing.detail);
-
-    return ok({ ...parsed.data, meta: { model, inputTokens, outputTokens, costCents: pricing.costCents } });
-  } catch (err) {
-    return requestFailed(err instanceof Error ? err.message : "OpenAI request failed.");
-  }
+  return completeAndParse(client, prompt, draftSchema);
 }
 
 export async function generateReplyDraft(input: {
@@ -163,7 +144,6 @@ export async function generateReplyDraft(input: {
 }): Promise<ProviderResult<DraftOutput>> {
   const client = getClient();
   if (!client) return notConfigured("OPENAI_API_KEY is not set.");
-  const model = getModel();
 
   const thread = input.conversationSoFar
     .map((m) => `${m.direction === "OUTBOUND" ? "Us" : input.businessName}: ${m.body}`)
@@ -177,28 +157,5 @@ ${thread}
 
 Respond with JSON: {"subject": string, "body": string}`;
 
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return requestFailed("OpenAI returned an empty response.");
-
-    const parsed = draftSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) {
-      return requestFailed(`OpenAI response didn't match the expected shape: ${parsed.error.message}`);
-    }
-
-    const inputTokens = completion.usage?.prompt_tokens ?? 0;
-    const outputTokens = completion.usage?.completion_tokens ?? 0;
-    const pricing = costCentsFor(model, inputTokens, outputTokens);
-    if (!pricing.ok) return requestFailed(pricing.detail);
-
-    return ok({ ...parsed.data, meta: { model, inputTokens, outputTokens, costCents: pricing.costCents } });
-  } catch (err) {
-    return requestFailed(err instanceof Error ? err.message : "OpenAI request failed.");
-  }
+  return completeAndParse(client, prompt, draftSchema);
 }
