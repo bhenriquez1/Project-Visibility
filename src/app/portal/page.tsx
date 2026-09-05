@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { computeRetentionSignals } from "@/lib/retention";
 import { getPortalViewer } from "@/lib/impersonation";
+import { setMyObjectives } from "@/lib/actions/customerActions";
 import { ScoreBadge } from "@/components/ScoreBadge";
 
 const EVENT_LABELS: Record<string, string> = {
@@ -44,6 +45,36 @@ export default async function PortalOverviewPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold">Hi, {prospect.businessName}</h1>
+
+      <section className="mt-4 rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+          Your goals
+        </h2>
+        {prospect.businessObjectives ? (
+          <p className="mt-1 text-black/70 dark:text-white/70">{prospect.businessObjectives}</p>
+        ) : viewer.isImpersonating ? (
+          <p className="mt-1 text-black/50 dark:text-white/50">Not set yet.</p>
+        ) : (
+          <form
+            action={async (formData: FormData) => {
+              "use server";
+              const value = String(formData.get("businessObjectives") ?? "").trim();
+              if (value) await setMyObjectives(value);
+            }}
+            className="mt-2 flex flex-col gap-2"
+          >
+            <textarea
+              name="businessObjectives"
+              placeholder="What are you hoping to get out of this? (e.g. more calls, more foot traffic, better reviews)"
+              rows={2}
+              className="w-full rounded-md border border-black/15 p-2 text-sm dark:border-white/20 dark:bg-black/20"
+            />
+            <button className="self-start rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
+              Save
+            </button>
+          </form>
+        )}
+      </section>
 
       {latestAudit ? (
         <section className="mt-6">

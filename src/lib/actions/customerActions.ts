@@ -211,6 +211,15 @@ export async function askGrowthManagerAction(question: string): Promise<string> 
   return answer.data.answer;
 }
 
+export async function setMyObjectives(businessObjectives: string) {
+  const prospectId = await requireCustomer();
+
+  await prisma.prospect.update({ where: { id: prospectId }, data: { businessObjectives } });
+  await logEvent("objectives_recorded", { prospectId, payload: { source: "self_serve" } });
+
+  revalidatePath("/portal");
+}
+
 export async function openBillingPortalAction() {
   const prospectId = await requireCustomer();
 

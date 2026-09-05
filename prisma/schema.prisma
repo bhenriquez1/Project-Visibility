@@ -54,6 +54,11 @@ model Prospect {
   // V2: set on customer sign-in at /portal — drives the "customer inactivity" retention signal.
   lastLoginAt DateTime?
 
+  // V3 Onboarding Agent: set either by the customer themselves (/portal self-serve field) or by
+  // Brian recording a reply (setProspectObjectives) — never inferred or guessed.
+  businessObjectives    String?
+  onboardingCompletedAt DateTime?
+
   audits                   Audit[]
   messages                 Message[]
   subscriptions            Subscription[]

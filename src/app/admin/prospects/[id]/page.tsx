@@ -12,6 +12,7 @@ import {
   logInboundReply,
   rejectMessage,
   setProspectEmail,
+  setProspectObjectives,
   updateProspectStatus,
 } from "@/lib/actions/prospectActions";
 
@@ -23,6 +24,7 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
     include: {
       audits: { orderBy: { requestedAt: "desc" }, take: 1, include: { competitors: true } },
       messages: { orderBy: { createdAt: "asc" } },
+      googleBusinessConnection: { select: { revokedAt: true } },
     },
   });
 
@@ -63,6 +65,50 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
         </div>
         <StatusSelect prospectId={prospect.id} status={prospect.status} onChange={updateProspectStatus} />
       </div>
+
+      {prospect.status === "WON" && (
+        <section className="mt-6 rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+            Onboarding
+          </h2>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
+              {prospect.googleBusinessConnection && !prospect.googleBusinessConnection.revokedAt
+                ? "GBP connected"
+                : "GBP not connected"}
+            </span>
+            <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
+              {prospect.onboardingCompletedAt
+                ? `Onboarding complete (${prospect.onboardingCompletedAt.toLocaleDateString()})`
+                : "Onboarding in progress"}
+            </span>
+          </div>
+          {prospect.businessObjectives ? (
+            <p className="mt-3 text-black/70 dark:text-white/70">
+              <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/50">Goals: </span>
+              {prospect.businessObjectives}
+            </p>
+          ) : (
+            <form
+              action={async (formData: FormData) => {
+                "use server";
+                await setProspectObjectives(prospect.id, String(formData.get("businessObjectives")));
+              }}
+              className="mt-3 flex flex-col gap-2"
+            >
+              <textarea
+                name="businessObjectives"
+                placeholder="What the customer told you their goals are (from a reply, a call, etc.) — never guessed."
+                rows={2}
+                className="w-full rounded-md border border-black/15 p-2 text-xs dark:border-white/20 dark:bg-black/20"
+              />
+              <button className="self-start rounded-md border border-black/15 px-2 py-1 text-xs font-medium dark:border-white/20">
+                Save goals
+              </button>
+            </form>
+          )}
+        </section>
+      )}
 
       {audit ? (
         <section className="mt-8">

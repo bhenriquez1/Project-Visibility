@@ -32,6 +32,18 @@ export async function setProspectEmail(prospectId: string, email: string) {
   revalidatePath("/admin/pipeline");
 }
 
+/** Records what a customer told us their goals are (e.g. via a reply Brian read and logged) —
+ * never inferred or guessed. See src/lib/agents/onboarding.ts for how this closes the loop. */
+export async function setProspectObjectives(prospectId: string, businessObjectives: string) {
+  await requireAdmin();
+
+  await prisma.prospect.update({ where: { id: prospectId }, data: { businessObjectives } });
+  await logEvent("objectives_recorded", { prospectId });
+
+  revalidatePath(`/admin/prospects/${prospectId}`);
+  revalidatePath("/admin/customers");
+}
+
 export async function updateProspectStatus(prospectId: string, status: ProspectStatus) {
   await requireAdmin();
 

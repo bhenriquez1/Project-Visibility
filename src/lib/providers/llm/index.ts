@@ -176,6 +176,31 @@ Respond with JSON: {"subject": string, "body": string}`;
   return completeAndParse(client, prompt, draftSchema);
 }
 
+export async function generateOnboardingNudge(input: {
+  businessName: string;
+  missing: "gbp_connection" | "objectives";
+}): Promise<ProviderResult<DraftOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const prompt =
+    input.missing === "gbp_connection"
+      ? `Write a short, friendly onboarding email to our new customer "${input.businessName}"
+prompting them to sign in at their customer portal and connect their Google Business Profile —
+that's what unlocks review syncing and reply drafts. No hype, no fake urgency. Keep it under
+100 words.
+
+Respond with JSON: {"subject": string, "body": string}`
+      : `Write a short, friendly onboarding email to our new customer "${input.businessName}"
+asking what their main goals are for working with us (e.g. more calls, more foot traffic, better
+reviews) so we can focus on what matters to them. No hype, no fake urgency. Keep it under 100
+words.
+
+Respond with JSON: {"subject": string, "body": string}`;
+
+  return completeAndParse(client, prompt, draftSchema);
+}
+
 const reviewReplySchema = z.object({ reply: z.string() });
 export type ReviewReplyOutput = z.infer<typeof reviewReplySchema> & { meta: AiCallMeta };
 

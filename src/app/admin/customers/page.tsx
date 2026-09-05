@@ -65,6 +65,11 @@ export default async function CustomersPage() {
                   <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
                     {c.lastLoginAt ? `last login ${c.lastLoginAt.toLocaleDateString()}` : "never logged in"}
                   </span>
+                  <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
+                    {c.onboardingCompletedAt
+                      ? "onboarding complete"
+                      : `onboarding: missing ${!gbpConnected ? "GBP" : ""}${!gbpConnected && !c.businessObjectives ? " & " : ""}${!c.businessObjectives ? "goals" : ""}`}
+                  </span>
                 </div>
                 <form
                   action={async () => {

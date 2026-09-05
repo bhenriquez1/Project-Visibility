@@ -4,13 +4,15 @@ import { assertAutomationNotPaused } from "@/lib/automationPause";
 import { scoutAgent } from "./scout";
 import { auditAgent } from "./audit";
 import { salesAgent } from "./sales";
+import { onboardingAgent } from "./onboarding";
 import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
 
-const REGISTRY: Record<"scout" | "audit" | "sales", Agent> = {
+const REGISTRY: Record<"scout" | "audit" | "sales" | "onboarding", Agent> = {
   scout: scoutAgent,
   audit: auditAgent,
   sales: salesAgent,
+  onboarding: onboardingAgent,
 };
 
 export function listRunnableAgents(): Agent[] {
