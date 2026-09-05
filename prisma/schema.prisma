@@ -1,0 +1,261 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Admin auth (V1: single seeded admin, not a customer-facing auth system) ───
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+}
+
+// ─── Prospect / CRM pipeline ───
+
+enum ProspectStatus {
+  PROSPECT
+  AUDITED
+  CONTACTED
+  REPLIED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+model Prospect {
+  id           String         @id @default(cuid())
+  businessName String
+  website      String
+  city         String
+  email        String         @unique
+  phone        String?
+  source       String         @default("public_audit_form")
+  status       ProspectStatus @default(PROSPECT)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  audits        Audit[]
+  messages      Message[]
+  subscriptions Subscription[]
+  events        Event[]
+
+  @@index([status])
+}
+
+// ─── Audit engine ───
+
+enum AuditStatus {
+  PENDING
+  PARTIAL
+  COMPLETE
+  FAILED
+}
+
+// Qualitative only — V1 must never promise a specific ranking or numeric guarantee.
+enum ScoreLevel {
+  NOT_AVAILABLE
+  NEEDS_ATTENTION
+  MODERATE
+  STRONG
+}
+
+model Audit {
+  id         String   @id @default(cuid())
+  prospectId String
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  status AuditStatus @default(PENDING)
+  error  String?
+
+  // Raw provider payloads, kept for debugging/audit trail — never fabricated if a provider
+  // was unavailable; absence of a key here means that source genuinely wasn't queried.
+  rawWebsiteSignals Json?
+  rawPlacesSignals  Json?
+  rawSerpSignals    Json?
+
+  // Sub-scores (0-100, nullable when the underlying source was not available).
+  visibilityScore    Int?
+  profileScore       Int?
+  reputationScore    Int?
+  websiteSeoScore    Int?
+  competitorGapScore Int?
+  conversionScore    Int?
+
+  overallLevel       ScoreLevel @default(NOT_AVAILABLE)
+  narrative          String? // AI-generated plain-language summary + opportunities
+  unavailableSources String[]   @default([]) // e.g. ["places", "serp"] — surfaced in the UI, never silently hidden
+
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+
+  competitors Competitor[]
+
+  @@index([prospectId])
+}
+
+model Competitor {
+  id      String @id @default(cuid())
+  auditId String
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  name    String
+  metrics Json // rating, reviewCount, serpPosition, etc. — shape defined by lib/providers
+
+  @@index([auditId])
+}
+
+// ─── Outreach / CRM messages (Brian Control Layer scaffold) ───
+
+enum MessageChannel {
+  EMAIL
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum MessageStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENT
+  REJECTED
+}
+
+// Mirrors the three-tier Brian Control Layer described for V3, so the schema doesn't need to
+// change when autonomy is introduced later. V1 only ever produces AI_PREPARED messages, and
+// every one of them requires an explicit approve-before-send action — no automatic sending.
+enum ApprovalTier {
+  AUTOMATIC
+  AI_PREPARED
+  BRIAN_ONLY
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  prospectId String
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  channel      MessageChannel   @default(EMAIL)
+  direction    MessageDirection
+  status       MessageStatus    @default(DRAFT)
+  approvalTier ApprovalTier     @default(AI_PREPARED)
+
+  subject String?
+  body    String
+
+  aiGenerated Boolean @default(false)
+
+  approvedBy String?
+  approvedAt DateTime?
+  sentAt     DateTime?
+  rejectedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([prospectId])
+  @@index([status])
+}
+
+// ─── Billing foundation ───
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Subscription {
+  id         String   @id @default(cuid())
+  prospectId String
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId     String
+  stripeSubscriptionId String?            @unique
+  plan                 String
+  priceCents           Int
+  status               SubscriptionStatus @default(INCOMPLETE)
+
+  currentPeriodEnd DateTime?
+  canceledAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([prospectId])
+}
+
+// ─── Cost tracking (feeds the economics dashboard) ───
+
+enum AiProvider {
+  OPENAI
+}
+
+model AiUsage {
+  id           String     @id @default(cuid())
+  provider     AiProvider @default(OPENAI)
+  model        String
+  relatedType  String // e.g. "Audit", "Message"
+  relatedId    String
+  inputTokens  Int
+  outputTokens Int
+  costCents    Float
+  createdAt    DateTime   @default(now())
+
+  @@index([relatedType, relatedId])
+}
+
+enum DataApiProvider {
+  GOOGLE_PLACES
+  SERP
+}
+
+model ApiCallLog {
+  id          String          @id @default(cuid())
+  provider    DataApiProvider
+  relatedType String
+  relatedId   String
+  success     Boolean
+  costCents   Float           @default(0)
+  createdAt   DateTime        @default(now())
+
+  @@index([relatedType, relatedId])
+}
+
+// ─── Analytics / audit trail ───
+
+model Event {
+  id         String    @id @default(cuid())
+  type       String
+  payload    Json?
+  prospectId String?
+  prospect   Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+
+  @@index([type])
+  @@index([prospectId])
+}
+
+// ─── App settings (pricing, cost estimates, manual spend entry) ───
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
