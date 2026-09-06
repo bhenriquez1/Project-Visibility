@@ -7,8 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { logAiUsage } from "@/lib/cost";
 import { decryptSecret } from "@/lib/crypto";
-import { listReviews, postReviewReply } from "@/lib/providers/googleBusinessProfile";
-import { answerGrowthManagerQuestion, generateReviewReplyDraft } from "@/lib/providers/llm";
+import { postReviewReply } from "@/lib/providers/googleBusinessProfile";
+import { answerGrowthManagerQuestion } from "@/lib/providers/llm";
+import { syncReviewsForProspect, draftReviewReply } from "@/lib/reviews/reviewSync";
 import { createBillingPortalSession } from "@/lib/providers/stripe";
 import {
   assertAgentCostBudget,
@@ -56,35 +57,9 @@ export async function syncReviewsAction() {
     throw new Error("Google Business Profile is not connected for this account.");
   }
 
-  const reviews = await listReviews(decryptSecret(connection.encryptedRefreshToken));
-  if (!reviews.ok) {
-    throw new Error(`Couldn't sync reviews: ${reviews.reason} — ${reviews.detail}`);
-  }
+  const { count } = await syncReviewsForProspect(prospectId, connection);
 
-  for (const review of reviews.data) {
-    await prisma.reviewReply.upsert({
-      where: { prospectId_googleReviewId: { prospectId, googleReviewId: review.resourceName } },
-      update: {
-        reviewerName: review.reviewerName,
-        reviewRating: review.starRating,
-        reviewComment: review.comment,
-        reviewCreatedAt: review.createTime ? new Date(review.createTime) : null,
-      },
-      create: {
-        prospectId,
-        googleReviewId: review.resourceName,
-        reviewerName: review.reviewerName,
-        reviewRating: review.starRating,
-        reviewComment: review.comment,
-        reviewCreatedAt: review.createTime ? new Date(review.createTime) : null,
-        draftReply: "",
-        status: "DRAFT",
-        aiGenerated: false,
-      },
-    });
-  }
-
-  await logEvent("reviews_synced", { prospectId, payload: { count: reviews.data.length } });
+  await logEvent("reviews_synced", { prospectId, payload: { count } });
   revalidatePath("/portal/reviews");
 }
 
@@ -100,23 +75,7 @@ export async function generateReviewReplyDraftAction(reviewReplyId: string) {
   const reviewReply = await requireOwnedReviewReply(reviewReplyId, prospectId);
   const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
 
-  const draft = await generateReviewReplyDraft({
-    businessName: prospect.businessName,
-    reviewerName: reviewReply.reviewerName,
-    starRating: reviewReply.reviewRating,
-    reviewComment: reviewReply.reviewComment,
-  });
-
-  if (!draft.ok) {
-    throw new Error(`Couldn't generate a draft: ${draft.reason} — ${draft.detail}`);
-  }
-
-  await logAiUsage("ReviewReply", prospectId, draft.data.meta);
-
-  await prisma.reviewReply.update({
-    where: { id: reviewReplyId },
-    data: { draftReply: draft.data.reply, status: "PENDING_CUSTOMER_APPROVAL", aiGenerated: true },
-  });
+  await draftReviewReply(reviewReply, prospect.businessName);
 
   revalidatePath("/portal/reviews");
 }
