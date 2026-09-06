@@ -5,14 +5,16 @@ import { scoutAgent } from "./scout";
 import { auditAgent } from "./audit";
 import { salesAgent } from "./sales";
 import { onboardingAgent } from "./onboarding";
+import { growthAgent } from "./growth";
 import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
 
-const REGISTRY: Record<"scout" | "audit" | "sales" | "onboarding", Agent> = {
+const REGISTRY: Record<"scout" | "audit" | "sales" | "onboarding" | "growth", Agent> = {
   scout: scoutAgent,
   audit: auditAgent,
   sales: salesAgent,
   onboarding: onboardingAgent,
+  growth: growthAgent,
 };
 
 export function listRunnableAgents(): Agent[] {
@@ -51,7 +53,20 @@ export async function runAgent(name: AgentName): Promise<{ agentRunId: string }>
         });
         continue;
       }
-      await agent.execute(action);
+      try {
+        await agent.execute(action);
+      } catch (err) {
+        // A single action failing (e.g. a customer hitting their plan's usage limit) must not
+        // abort the rest of the batch — that's routine, not a system error. The whole AgentRun
+        // only fails below if something throws outside this loop (e.g. proposeActions itself).
+        await logEvent("agent_action_execution_failed", {
+          payload: {
+            agentName: name,
+            summary: action.summary,
+            error: err instanceof Error ? err.message : "Unexpected error executing this action.",
+          },
+        });
+      }
     }
 
     await prisma.agentRun.update({

@@ -52,9 +52,22 @@ export async function assertMonthlyAiEntitlement(
   const limit = plan.entitlements[entitlement];
   if (typeof limit !== "number") throw new Error(`${label} is not a numeric plan entitlement.`);
 
-  const used = await prisma.aiUsage.count({
-    where: { relatedId: prospectId, relatedType, createdAt: { gte: currentMonthStart() } },
-  });
+  // AiUsage.relatedId means different things per relatedType: Message/ReviewReply/
+  // GrowthManagerQuestion key it directly by prospectId, but Audit keys it by the Audit row's
+  // own id (see logAiUsage("Audit", auditId, ...) in runAudit.ts, and the same indirection in
+  // economics.ts). Querying relatedId: prospectId for "Audit" would always read 0 usage and
+  // never actually enforce the limit.
+  const relatedIds =
+    relatedType === "Audit"
+      ? (await prisma.audit.findMany({ where: { prospectId }, select: { id: true } })).map((a) => a.id)
+      : [prospectId];
+
+  const used =
+    relatedIds.length === 0
+      ? 0
+      : await prisma.aiUsage.count({
+          where: { relatedType, relatedId: { in: relatedIds }, createdAt: { gte: currentMonthStart() } },
+        });
   assertBelowLimit(label, used, limit, plan);
 }
 

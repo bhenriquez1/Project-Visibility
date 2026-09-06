@@ -201,6 +201,25 @@ Respond with JSON: {"subject": string, "body": string}`;
   return completeAndParse(client, prompt, draftSchema);
 }
 
+export async function generateGrowthRecommendations(input: {
+  businessName: string;
+  opportunities: string[];
+}): Promise<ProviderResult<DraftOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const prompt = `Write a short, specific email to our customer "${input.businessName}" pointing
+out concrete opportunities we noticed in their latest visibility audit, grounded only in the
+list below — don't invent anything beyond it. No hype, no fake urgency, no guaranteed ranking
+claims. These are areas to work on, not promises. Keep the body under 150 words.
+
+Opportunities noticed: ${input.opportunities.join("; ")}
+
+Respond with JSON: {"subject": string, "body": string}`;
+
+  return completeAndParse(client, prompt, draftSchema);
+}
+
 const reviewReplySchema = z.object({ reply: z.string() });
 export type ReviewReplyOutput = z.infer<typeof reviewReplySchema> & { meta: AiCallMeta };
 
