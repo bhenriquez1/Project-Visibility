@@ -278,6 +278,26 @@ Respond with JSON: {"answer": string}`;
   return completeAndParse(client, prompt, answerSchema);
 }
 
+export async function generateRetentionOutreach(input: {
+  businessName: string;
+  reasons: string[];
+}): Promise<ProviderResult<DraftOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const prompt = `Write a short, genuine check-in email to our customer "${input.businessName}".
+This is a relationship check-in, not a sales pitch — the goal is to see how things are going and
+offer help, grounded only in the real observations below. Never use alarming language like
+"at risk" or imply their account is in jeopardy. Never offer a discount, refund, or any other
+promise we haven't authorized. No hype, no fake urgency. Keep the body under 130 words.
+
+Observations: ${input.reasons.join("; ")}
+
+Respond with JSON: {"subject": string, "body": string}`;
+
+  return completeAndParse(client, prompt, draftSchema);
+}
+
 const analyticsDigestSchema = z.object({ narrative: z.string() });
 export type AnalyticsDigestOutput = z.infer<typeof analyticsDigestSchema> & { meta: AiCallMeta };
 

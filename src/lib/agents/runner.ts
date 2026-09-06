@@ -8,13 +8,11 @@ import { onboardingAgent } from "./onboarding";
 import { growthAgent } from "./growth";
 import { reputationAgent } from "./reputation";
 import { analyticsAgent } from "./analytics";
+import { retentionAgent } from "./retention";
 import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
 
-const REGISTRY: Record<
-  "scout" | "audit" | "sales" | "onboarding" | "growth" | "reputation" | "analytics",
-  Agent
-> = {
+const REGISTRY: Record<AgentName, Agent> = {
   scout: scoutAgent,
   audit: auditAgent,
   sales: salesAgent,
@@ -22,6 +20,7 @@ const REGISTRY: Record<
   growth: growthAgent,
   reputation: reputationAgent,
   analytics: analyticsAgent,
+  retention: retentionAgent,
 };
 
 export function listRunnableAgents(): Agent[] {
