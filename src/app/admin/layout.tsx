@@ -34,6 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           ))}
         </nav>
         <div className="mt-auto pt-6 text-xs text-black/50 dark:text-white/50">
+          <div className="mb-1 font-semibold uppercase tracking-wide text-black/70 dark:text-white/70">Owner</div>
           <div className="mb-2 truncate">{session?.user?.email}</div>
           <form
             action={async () => {

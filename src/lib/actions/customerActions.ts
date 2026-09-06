@@ -20,11 +20,11 @@ import { assertAutomationNotPaused } from "@/lib/automationPause";
 
 async function requireCustomer(): Promise<string> {
   const session = await auth();
-  // An impersonating admin (role "admin") never has session.user.prospectId set — that's only
+  // An impersonating owner never has session.user.prospectId set — that's only
   // populated for real customer logins — so this naturally rejects every write while
   // impersonating. The distinct message just makes the reason clear rather than implying the
   // admin isn't logged in at all.
-  if (session?.user?.role === "admin") {
+  if (session?.user?.role === "owner") {
     throw new Error("Read-only: you're viewing as a customer. Stop impersonating to make changes.");
   }
   if (!session?.user || session.user.role !== "customer" || !session.user.prospectId) {

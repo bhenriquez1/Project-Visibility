@@ -28,7 +28,7 @@ export async function getPortalViewer(): Promise<PortalViewer | null> {
     return { prospectId: session.user.prospectId, isImpersonating: false, businessName: prospect.businessName };
   }
 
-  if (session?.user?.role === "admin") {
+  if (session?.user?.role === "owner") {
     const cookieStore = await cookies();
     const prospectId = cookieStore.get(IMPERSONATION_COOKIE)?.value;
     if (!prospectId) return null;

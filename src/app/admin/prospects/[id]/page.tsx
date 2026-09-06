@@ -116,6 +116,11 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
             Latest audit ({audit.status})
           </h2>
           {audit.narrative && <p className="mt-2 text-sm">{audit.narrative}</p>}
+          {audit.status === "FAILED" && audit.error && (
+            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              {audit.error}
+            </pre>
+          )}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <ScoreBadge label="Visibility" score={audit.visibilityScore} />
             <ScoreBadge label="Profile" score={audit.profileScore} />

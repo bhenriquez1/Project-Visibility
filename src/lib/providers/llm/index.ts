@@ -48,20 +48,66 @@ async function completeAndParse<T>(
   const result = await client.completeJson(prompt);
   if (!result.ok) return result;
 
-  let json: unknown;
-  try {
-    json = JSON.parse(result.data.raw);
-  } catch {
-    return requestFailed(`${client.providerId} returned invalid JSON.`);
+  function parse(raw: string): { success: true; data: T } | { success: false; detail: string } {
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return { success: false, detail: "invalid JSON" };
+    }
+
+    const parsed = schema.safeParse(json);
+    return parsed.success
+      ? { success: true, data: parsed.data }
+      : { success: false, detail: parsed.error.message };
   }
 
-  const parsed = schema.safeParse(json);
-  if (!parsed.success) {
-    return requestFailed(`${client.providerId} response didn't match the expected shape: ${parsed.error.message}`);
+  const initial = parse(result.data.raw);
+  if (!initial.success) {
+    // One repair attempt only. It receives the original evidence and the exact validation
+    // failure, but is explicitly forbidden from inventing missing evidence or scores.
+    const repair = await client.completeJson(`The prior response failed strict schema validation.
+
+Original request and evidence:
+${prompt}
+
+Invalid response:
+${result.data.raw}
+
+Validation failure:
+${initial.detail}
+
+Return one corrected JSON object matching the original contract. Preserve the original evidence.
+Do not invent facts or scores. A score may be null only where the original request says its data
+source is unavailable. Return JSON only.`);
+
+    if (!repair.ok) {
+      return requestFailed(
+        `${client.providerId} response didn't match the expected shape; controlled repair failed: ${repair.detail}`
+      );
+    }
+
+    const repaired = parse(repair.data.raw);
+    if (!repaired.success) {
+      return requestFailed(
+        `${client.providerId} response didn't match the expected shape after one controlled repair: ${repaired.detail}`
+      );
+    }
+
+    return ok({
+      ...repaired.data,
+      meta: {
+        provider: client.providerId,
+        model: repair.data.model,
+        inputTokens: result.data.inputTokens + repair.data.inputTokens,
+        outputTokens: result.data.outputTokens + repair.data.outputTokens,
+        costCents: result.data.costCents + repair.data.costCents,
+      },
+    });
   }
 
   return ok({
-    ...parsed.data,
+    ...initial.data,
     meta: {
       provider: client.providerId,
       model: result.data.model,
@@ -72,19 +118,11 @@ async function completeAndParse<T>(
   });
 }
 
-const scoreSchema = z.number().int().min(0).max(100).nullable();
+const numericScoreSchema = z.number().int().min(0).max(100);
 
-const auditReasoningSchema = z.object({
-  visibilityScore: scoreSchema,
-  profileScore: scoreSchema,
-  reputationScore: scoreSchema,
-  websiteSeoScore: scoreSchema,
-  competitorGapScore: scoreSchema,
-  conversionScore: scoreSchema,
-  narrative: z.string(),
-});
-
-export type AuditReasoningOutput = z.infer<typeof auditReasoningSchema> & { meta: AiCallMeta };
+function scoreSchema(sourceAvailable: boolean) {
+  return sourceAvailable ? numericScoreSchema : z.null();
+}
 
 export interface AuditReasoningInput {
   businessName: string;
@@ -94,6 +132,29 @@ export interface AuditReasoningInput {
   serp: SerpSignals | null;
   unavailableSources: string[];
 }
+
+function auditReasoningSchema(input: AuditReasoningInput) {
+  return z.object({
+    visibilityScore: scoreSchema(Boolean(input.serp)),
+    profileScore: scoreSchema(Boolean(input.place)),
+    reputationScore: scoreSchema(Boolean(input.place)),
+    websiteSeoScore: scoreSchema(Boolean(input.website)),
+    competitorGapScore: scoreSchema(Boolean(input.serp && input.place)),
+    conversionScore: scoreSchema(Boolean(input.website)),
+    narrative: z.string().min(1),
+  }).strict();
+}
+
+export type AuditReasoningOutput = {
+  visibilityScore: number | null;
+  profileScore: number | null;
+  reputationScore: number | null;
+  websiteSeoScore: number | null;
+  competitorGapScore: number | null;
+  conversionScore: number | null;
+  narrative: string;
+  meta: AiCallMeta;
+};
 
 export async function generateAuditReasoning(
   input: AuditReasoningInput
@@ -127,7 +188,7 @@ plain-language summary and the top 2-3 concrete opportunities, grounded only in 
 Respond with JSON matching this exact shape:
 {"visibilityScore": number|null, "profileScore": number|null, "reputationScore": number|null, "websiteSeoScore": number|null, "competitorGapScore": number|null, "conversionScore": number|null, "narrative": string}`;
 
-  return completeAndParse(client, prompt, auditReasoningSchema);
+  return completeAndParse(client, prompt, auditReasoningSchema(input));
 }
 
 const draftSchema = z.object({ subject: z.string(), body: z.string() });

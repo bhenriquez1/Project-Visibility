@@ -94,7 +94,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     async jwt({ token, account, user }) {
       if (account?.provider === "credentials") {
-        token.role = "admin";
+        token.role = "owner";
       } else if (account?.provider === "google" && user?.email) {
         const prospect = await prisma.prospect.findUnique({ where: { email: user.email } });
         if (prospect) {

@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 
-export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+  const isOwner = session?.user?.role === "owner";
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-black/10 dark:border-white/10">
@@ -8,10 +12,18 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <Link href="/" className="text-lg font-semibold">
             Local Visibility AI
           </Link>
-          <nav className="text-sm text-black/60 dark:text-white/60">
+          <nav className="flex items-center gap-4 text-sm text-black/60 dark:text-white/60">
             <Link href="/#audit-form" className="hover:text-black dark:hover:text-white">
               Get your free audit
             </Link>
+            {isOwner && (
+              <Link
+                href="/admin"
+                className="rounded-md bg-black px-3 py-1.5 font-medium text-white dark:bg-white dark:text-black"
+              >
+                Owner Command Center
+              </Link>
+            )}
           </nav>
         </div>
       </header>

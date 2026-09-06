@@ -23,7 +23,7 @@ export default async function AuditReportPage({ params }: { params: Promise<{ id
 
       {audit.status === "FAILED" && (
         <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          We couldn&apos;t complete this audit: {audit.error ?? "unknown error"}. Please try again shortly.
+          We couldn&apos;t complete your audit right now. No changes were made. Please try again shortly.
         </div>
       )}
 

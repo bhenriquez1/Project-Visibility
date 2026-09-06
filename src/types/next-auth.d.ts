@@ -1,6 +1,6 @@
 import type { DefaultSession } from "next-auth";
 
-export type UserRole = "admin" | "customer";
+export type UserRole = "owner" | "customer";
 
 declare module "next-auth" {
   interface Session {

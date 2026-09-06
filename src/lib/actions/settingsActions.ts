@@ -15,8 +15,8 @@ const SETTINGS_KEYS = [
 
 export async function updateSettings(formData: FormData) {
   const session = await auth();
-  if (!session?.user?.email || session.user.role !== "admin") {
-    throw new Error("Not authenticated as an admin.");
+  if (!session?.user?.email || session.user.role !== "owner") {
+    throw new Error("Not authenticated as the owner.");
   }
 
   await Promise.all(

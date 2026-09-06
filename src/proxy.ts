@@ -14,10 +14,10 @@ export default auth((req) => {
   const isPortalArea = pathname.startsWith("/portal") && pathname !== "/portal/login";
   const isPortalLogin = pathname === "/portal/login";
 
-  if (isAdminArea && (!isLoggedIn || role !== "admin")) {
+  if (isAdminArea && (!isLoggedIn || role !== "owner")) {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
   }
-  if (isAdminLogin && isLoggedIn && role === "admin") {
+  if (isAdminLogin && isLoggedIn && role === "owner") {
     return NextResponse.redirect(new URL("/admin", req.nextUrl));
   }
 
@@ -26,10 +26,10 @@ export default auth((req) => {
     // Presence check only — the cookie's prospect id is revalidated (WON status, real record)
     // server-side by getPortalViewer() on every render, so a stale/tampered cookie can't grant
     // access on its own. This just lets a deliberately-impersonating admin request through.
-    const isImpersonatingAdmin = isLoggedIn && role === "admin" && req.cookies.has("impersonation_prospect_id");
+    const isImpersonatingAdmin = isLoggedIn && role === "owner" && req.cookies.has("impersonation_prospect_id");
 
     if (!isCustomer && !isImpersonatingAdmin) {
-      return NextResponse.redirect(new URL(isLoggedIn && role === "admin" ? "/admin" : "/portal/login", req.nextUrl));
+      return NextResponse.redirect(new URL(isLoggedIn && role === "owner" ? "/admin" : "/portal/login", req.nextUrl));
     }
   }
   if (isPortalLogin && isLoggedIn && role === "customer") {

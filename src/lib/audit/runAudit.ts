@@ -54,7 +54,10 @@ export async function runAudit(auditId: string): Promise<void> {
         completedAt: new Date(),
       },
     });
-    await logEvent("audit_failed", { prospectId: prospect.id, payload: { auditId, reason: reasoning.reason } });
+    await logEvent("audit_failed", {
+      prospectId: prospect.id,
+      payload: { auditId, reason: reasoning.reason, detail: reasoning.detail },
+    });
     return;
   }
 

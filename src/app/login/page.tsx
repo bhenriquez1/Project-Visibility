@@ -33,7 +33,7 @@ export default function LoginPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6">
-      <h1 className="text-xl font-semibold">Admin sign in</h1>
+      <h1 className="text-xl font-semibold">Owner sign in</h1>
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
         <input
           name="email"

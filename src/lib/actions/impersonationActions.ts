@@ -9,8 +9,8 @@ import { IMPERSONATION_COOKIE } from "@/lib/impersonation";
 
 async function requireAdmin() {
   const session = await auth();
-  if (!session?.user?.email || session.user.role !== "admin") {
-    throw new Error("Not authenticated as an admin.");
+  if (!session?.user?.email || session.user.role !== "owner") {
+    throw new Error("Not authenticated as the owner.");
   }
   return session.user.email;
 }

@@ -36,13 +36,18 @@ export async function POST(req: Request) {
   try {
     await runAudit(audit.id);
   } catch (err) {
+    const detail = err instanceof Error ? err.message : "Unexpected error running the audit.";
     await prisma.audit.update({
       where: { id: audit.id },
       data: {
         status: "FAILED",
-        error: err instanceof Error ? err.message : "Unexpected error running the audit.",
+        error: detail,
         completedAt: new Date(),
       },
+    });
+    await logEvent("audit_failed", {
+      prospectId: prospect.id,
+      payload: { auditId: audit.id, reason: "UNEXPECTED_ERROR", detail },
     });
   }
 
