@@ -277,3 +277,41 @@ Respond with JSON: {"answer": string}`;
 
   return completeAndParse(client, prompt, answerSchema);
 }
+
+const analyticsDigestSchema = z.object({ narrative: z.string() });
+export type AnalyticsDigestOutput = z.infer<typeof analyticsDigestSchema> & { meta: AiCallMeta };
+
+/**
+ * Turns computeEconomics()'s real numbers into a plain-language summary for Brian — same
+ * narrative-from-structured-data shape as generateAuditReasoning, but every figure here is
+ * already computed (never estimated), so the prompt only asks for phrasing, not scoring.
+ */
+export async function generateAnalyticsDigest(input: {
+  mrrCents: number;
+  arrCents: number;
+  activeCustomerCount: number;
+  churnRate: number | null;
+  grossMarginPct: number | null;
+  conversionRatePct: number | null;
+  newCustomersLast7Days: number;
+}): Promise<ProviderResult<AnalyticsDigestOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const prompt = `Summarize the current state of a small local-business SaaS business in 2-4
+plain-language sentences for the owner, grounded only in the real numbers below — never invent,
+estimate, or round in a misleading direction. If a figure is null, say there isn't enough data
+for it yet rather than guessing.
+
+MRR: $${(input.mrrCents / 100).toFixed(2)}
+ARR: $${(input.arrCents / 100).toFixed(2)}
+Active customers: ${input.activeCustomerCount}
+Churn rate: ${input.churnRate === null ? "not enough data" : `${(input.churnRate * 100).toFixed(1)}%`}
+Gross margin: ${input.grossMarginPct === null ? "not enough data" : `${input.grossMarginPct.toFixed(1)}%`}
+Prospect-to-customer conversion rate: ${input.conversionRatePct === null ? "not enough data" : `${input.conversionRatePct.toFixed(1)}%`}
+New customers in the last 7 days: ${input.newCustomersLast7Days}
+
+Respond with JSON: {"narrative": string}`;
+
+  return completeAndParse(client, prompt, analyticsDigestSchema);
+}
