@@ -15,6 +15,8 @@ import {
   setProspectObjectives,
   updateProspectStatus,
 } from "@/lib/actions/prospectActions";
+import { setProspectPauseAction } from "@/lib/actions/pipelineActions";
+import { isProspectPaused } from "@/lib/agentOperations";
 
 export default async function ProspectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +31,7 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
   });
 
   if (!prospect) notFound();
+  const automationPaused = await isProspectPaused(prospect.id);
 
   const audit = prospect.audits[0];
   const pendingMessages = prospect.messages.filter((m) => m.status === "PENDING_APPROVAL");
@@ -63,7 +66,14 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
             </form>
           )}
         </div>
-        <StatusSelect prospectId={prospect.id} status={prospect.status} onChange={updateProspectStatus} />
+        <div className="flex items-center gap-2">
+          <form action={async () => { "use server"; await setProspectPauseAction(prospect.id, !automationPaused); }}>
+            <button className={`rounded-md border px-3 py-1.5 text-xs font-medium ${automationPaused ? "border-red-300 bg-red-50 text-red-700" : "border-black/15 dark:border-white/20"}`}>
+              {automationPaused ? "Resume prospect automation" : "Pause prospect automation"}
+            </button>
+          </form>
+          <StatusSelect prospectId={prospect.id} status={prospect.status} onChange={updateProspectStatus} />
+        </div>
       </div>
 
       {prospect.status === "WON" && (

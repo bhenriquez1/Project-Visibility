@@ -9,24 +9,15 @@ import {
   setGlobalPauseAction,
   updateScoutMarketsAction,
 } from "@/lib/actions/agentActions";
-import type { AgentName } from "@/lib/agents/types";
+import { AGENT_NAMES, getAgentOperatingState } from "@/lib/agentOperations";
 
 const TIER_STYLES: Record<string, string> = {
-  AUTOMATIC: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  AI_PREPARED: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  BRIAN_ONLY: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  AUTONOMOUS: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  APPROVAL_REQUIRED: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  PAUSED: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+  DEGRADED: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+  ERROR: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
-
-const ALL_AGENT_NAMES: AgentName[] = [
-  "scout",
-  "audit",
-  "sales",
-  "onboarding",
-  "growth",
-  "reputation",
-  "analytics",
-  "retention",
-];
 
 export default async function AgentsPage() {
   const implemented = listRunnableAgents();
@@ -36,9 +27,12 @@ export default async function AgentsPage() {
     prisma.agentRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
     prisma.setting.findUnique({ where: { key: "scout_target_markets" } }),
     isGlobalAutomationPaused(),
-    Promise.all(ALL_AGENT_NAMES.map(async (name) => [name, await isAgentPaused(name)] as const)),
+    Promise.all(AGENT_NAMES.map(async (name) => [name, await isAgentPaused(name)] as const)),
   ]);
   const pausedByName = new Map(perAgentPaused);
+  const operatingStates = new Map(
+    await Promise.all(AGENT_NAMES.map(async (name) => [name, await getAgentOperatingState(name)] as const))
+  );
 
   const lastRunByAgent = new Map<string, (typeof runs)[number]>();
   for (const run of runs) {
@@ -88,10 +82,11 @@ export default async function AgentsPage() {
       </section>
 
       <div className="mt-6 flex flex-col gap-3">
-        {ALL_AGENT_NAMES.map((name) => {
+        {AGENT_NAMES.map((name) => {
           const agent = implementedByName.get(name);
           const lastRun = lastRunByAgent.get(name);
           const paused = pausedByName.get(name) ?? false;
+          const operatingState = operatingStates.get(name) ?? "DEGRADED";
 
           return (
             <div
@@ -102,8 +97,8 @@ export default async function AgentsPage() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium capitalize">{name} agent</span>
                   {agent ? (
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TIER_STYLES[agent.defaultControlTier]}`}>
-                      {agent.defaultControlTier}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TIER_STYLES[operatingState]}`}>
+                      {operatingState.replace("_", " ")}
                     </span>
                   ) : (
                     <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs font-semibold text-black/50 dark:bg-white/10 dark:text-white/50">

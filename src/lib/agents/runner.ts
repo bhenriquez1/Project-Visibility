@@ -11,6 +11,7 @@ import { analyticsAgent } from "./analytics";
 import { retentionAgent } from "./retention";
 import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
+import { isProspectPaused } from "@/lib/agentOperations";
 
 const REGISTRY: Record<AgentName, Agent> = {
   scout: scoutAgent,
@@ -47,6 +48,13 @@ export async function runAgent(name: AgentName): Promise<{ agentRunId: string }>
     const actions = await agent.proposeActions({ llmProviderId: "openai" });
 
     for (const action of actions) {
+      const prospectId = typeof action.payload === "object" && action.payload !== null && "prospectId" in action.payload
+        ? String((action.payload as { prospectId: unknown }).prospectId)
+        : null;
+      if (prospectId && await isProspectPaused(prospectId)) {
+        await logEvent("agent_action_skipped_prospect_paused", { prospectId, payload: { agentName: name, summary: action.summary } });
+        continue;
+      }
       const decision = evaluateAgentAction(action);
       if (!decision.execute) {
         await logEvent("agent_action_blocked_for_brian", {

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { runAudit } from "@/lib/audit/runAudit";
 import type { Agent, AgentAction } from "./types";
+import { getAgentBatchLimit, isProspectPaused } from "@/lib/agentOperations";
 
 interface AuditPayload {
   prospectId: string;
@@ -17,10 +18,15 @@ export const auditAgent: Agent = {
     const candidates = await prisma.prospect.findMany({
       where: { status: "PROSPECT", audits: { none: {} } },
       select: { id: true, businessName: true, city: true },
-      take: 25,
+      take: await getAgentBatchLimit("audit"),
     });
 
-    return candidates.map((p) => ({
+    const activeCandidates = [];
+    for (const candidate of candidates) {
+      if (!(await isProspectPaused(candidate.id))) activeCandidates.push(candidate);
+    }
+
+    return activeCandidates.map((p) => ({
       controlTier: "AUTOMATIC",
       consequence: "ANALYSIS",
       summary: `Run audit: ${p.businessName} (${p.city})`,

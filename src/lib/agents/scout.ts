@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { searchNearbyBusinesses } from "@/lib/providers/places";
 import type { Agent, AgentAction } from "./types";
+import { getAgentBatchLimit } from "@/lib/agentOperations";
 
 interface TargetMarket {
   category: string;
@@ -77,11 +78,24 @@ export const scoutAgent: Agent = {
       }
     }
 
-    return actions;
+    return actions.slice(0, await getAgentBatchLimit("scout"));
   },
 
   async execute(action: AgentAction): Promise<void> {
     const { businessName, website, city } = action.payload as ScoutPayload;
+
+    const duplicate = await prisma.prospect.findFirst({
+      where: {
+        OR: [
+          { website: { equals: website, mode: "insensitive" } },
+          { businessName: { equals: businessName, mode: "insensitive" }, city: { equals: city, mode: "insensitive" } },
+        ],
+      },
+    });
+    if (duplicate) {
+      await logEvent("scout_duplicate_skipped", { prospectId: duplicate.id, payload: { businessName, city, website } });
+      return;
+    }
 
     const prospect = await prisma.prospect.create({
       data: { businessName, website, city, source: "scout_agent" },

@@ -21,11 +21,24 @@ export async function POST(req: Request) {
 
   const { businessName, website, city, email } = parsed.data;
 
-  const prospect = await prisma.prospect.upsert({
-    where: { email },
-    update: { businessName, website, city },
-    create: { businessName, website, city, email },
+  const existingBusiness = await prisma.prospect.findFirst({
+    where: {
+      OR: [
+        { website: { equals: website, mode: "insensitive" } },
+        { businessName: { equals: businessName, mode: "insensitive" }, city: { equals: city, mode: "insensitive" } },
+      ],
+    },
   });
+  const prospect = existingBusiness
+    ? await prisma.prospect.update({
+        where: { id: existingBusiness.id },
+        data: { businessName, website, city, email: existingBusiness.email ?? email },
+      })
+    : await prisma.prospect.upsert({
+        where: { email },
+        update: { businessName, website, city },
+        create: { businessName, website, city, email },
+      });
 
   const audit = await prisma.audit.create({
     data: { prospectId: prospect.id },
