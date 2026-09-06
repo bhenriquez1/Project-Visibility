@@ -100,9 +100,50 @@ export interface NearbyBusiness {
   businessName: string;
   website: string;
   city: string;
+  formattedAddress: string;
 }
 
-const NEARBY_FIELD_MASK = ["places.id", "places.displayName", "places.websiteUri"].join(",");
+const NEARBY_FIELD_MASK = [
+  "places.id",
+  "places.displayName",
+  "places.websiteUri",
+  "places.formattedAddress",
+  "places.addressComponents",
+  "places.businessStatus",
+].join(",");
+
+interface NearbyPlaceResponse {
+  id: string;
+  displayName?: { text?: string };
+  websiteUri?: string;
+  formattedAddress?: string;
+  addressComponents?: Array<{ types?: string[]; shortText?: string }>;
+  businessStatus?: string;
+}
+
+function isPublicWebsite(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isEligibleUsBusiness(place: NearbyPlaceResponse): boolean {
+  const country = place.addressComponents?.find((component) =>
+    component.types?.includes("country")
+  )?.shortText;
+
+  return (
+    country === "US" &&
+    place.businessStatus === "OPERATIONAL" &&
+    Boolean(place.displayName?.text?.trim()) &&
+    Boolean(place.formattedAddress?.trim()) &&
+    isPublicWebsite(place.websiteUri)
+  );
+}
 
 /**
  * Public category+city business search — used by the Scout Agent (V3) to find NEW prospects.
@@ -134,17 +175,22 @@ export async function searchNearbyBusinesses(
       return requestFailed(`Google Places API returned ${res.status}: ${body}`);
     }
 
-    const json = (await res.json()) as {
-      places?: Array<{ id: string; displayName?: { text?: string }; websiteUri?: string }>;
-    };
+    const json = (await res.json()) as { places?: NearbyPlaceResponse[] };
 
     const businesses = (json.places ?? [])
-      .filter((p): p is typeof p & { websiteUri: string } => Boolean(p.websiteUri))
+      .filter(
+        (place): place is NearbyPlaceResponse & {
+          displayName: { text: string };
+          websiteUri: string;
+          formattedAddress: string;
+        } => isEligibleUsBusiness(place)
+      )
       .map((p) => ({
         placeId: p.id,
-        businessName: p.displayName?.text ?? "Unknown business",
+        businessName: p.displayName.text,
         website: p.websiteUri,
         city,
+        formattedAddress: p.formattedAddress,
       }));
 
     return ok(businesses);
