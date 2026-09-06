@@ -15,6 +15,32 @@ interface ScoutPayload {
   city: string;
 }
 
+const DEFAULT_BUSINESS_CATEGORIES = [
+  "restaurants",
+  "retail stores",
+  "plumbers",
+  "electricians",
+  "roofing contractors",
+  "landscapers",
+  "HVAC contractors",
+  "dentists",
+  "medical clinics",
+  "law firms",
+  "accounting firms",
+  "real estate agencies",
+  "salons and spas",
+  "gyms and fitness studios",
+  "auto repair shops",
+  "cleaning services",
+  "pet services",
+  "child care centers",
+  "hotels",
+  "coffee shops",
+] as const;
+
+// Rotate through a broad portfolio without running every provider search each cycle.
+const MAX_MARKET_SEARCHES_PER_RUN = 4;
+
 async function getTargetMarkets(): Promise<TargetMarket[]> {
   const setting = await prisma.setting.findUnique({ where: { key: "scout_target_markets" } });
   if (!setting) return [];
@@ -29,6 +55,24 @@ async function getTargetMarkets(): Promise<TargetMarket[]> {
   }
 }
 
+export function buildRotatingTargetMarkets(
+  configuredMarkets: TargetMarket[],
+  cycle = Math.floor(Date.now() / (15 * 60 * 1000))
+): TargetMarket[] {
+  const cities = [...new Set(configuredMarkets.map((market) => market.city.trim()))];
+  if (cities.length === 0) return [];
+
+  const configuredCategories = configuredMarkets.map((market) => market.category.trim());
+  const categories = [...new Set([...DEFAULT_BUSINESS_CATEGORIES, ...configuredCategories])];
+  const portfolio = cities.flatMap((city) => categories.map((category) => ({ category, city })));
+  const start = (cycle * MAX_MARKET_SEARCHES_PER_RUN) % portfolio.length;
+
+  return Array.from(
+    { length: Math.min(MAX_MARKET_SEARCHES_PER_RUN, portfolio.length) },
+    (_, offset) => portfolio[(start + offset) % portfolio.length]
+  );
+}
+
 export const scoutAgent: Agent = {
   name: "scout",
   // Creating an internal Prospect record has zero external footprint — no email is sent, no
@@ -36,7 +80,7 @@ export const scoutAgent: Agent = {
   defaultControlTier: "AUTOMATIC",
 
   async proposeActions(): Promise<AgentAction[]> {
-    const markets = await getTargetMarkets();
+    const markets = buildRotatingTargetMarkets(await getTargetMarkets());
     if (markets.length === 0) return [];
 
     const existing = await prisma.prospect.findMany({
