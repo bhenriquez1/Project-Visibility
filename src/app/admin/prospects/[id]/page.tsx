@@ -18,8 +18,15 @@ import {
 import { setProspectPauseAction } from "@/lib/actions/pipelineActions";
 import { isProspectPaused } from "@/lib/agentOperations";
 
-export default async function ProspectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProspectDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { id } = await params;
+  const { error } = await searchParams;
 
   const prospect = await prisma.prospect.findUnique({
     where: { id },
@@ -75,6 +82,12 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
           <StatusSelect prospectId={prospect.id} status={prospect.status} onChange={updateProspectStatus} />
         </div>
       </div>
+
+      {error && (
+        <div className="mt-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {prospect.status === "WON" && (
         <section className="mt-6 rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">

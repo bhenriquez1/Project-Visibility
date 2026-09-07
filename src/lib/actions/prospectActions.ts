@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +11,16 @@ import { generateOutreachDraft, generateReplyDraft } from "@/lib/providers/llm";
 import { createCheckoutSession } from "@/lib/providers/stripe";
 import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
+
+/**
+ * Redirects back to the prospect page with a readable error instead of letting an admin-facing
+ * button's failure crash into Next's generic error boundary — the underlying reason (e.g.
+ * NOT_CONFIGURED, "awaiting pricing approval") stays visible, matching this codebase's own "no
+ * silent failure, surface it explicitly" standard.
+ */
+function redirectWithError(prospectId: string, message: string): never {
+  redirect(`/admin/prospects/${prospectId}?error=${encodeURIComponent(message)}`);
+}
 
 async function requireAdmin() {
   const session = await auth();
@@ -63,7 +74,7 @@ export async function generateOutreachDraftAction(prospectId: string) {
   });
 
   if (!prospect.email) {
-    throw new Error("This prospect has no email on file yet — add one before drafting outreach.");
+    redirectWithError(prospectId, "This prospect has no email on file yet — add one before drafting outreach.");
   }
 
   const latestAudit = prospect.audits[0];
@@ -76,7 +87,7 @@ export async function generateOutreachDraftAction(prospectId: string) {
   });
 
   if (!draft.ok) {
-    throw new Error(`Couldn't generate a draft: ${draft.reason} — ${draft.detail}`);
+    redirectWithError(prospectId, `Couldn't generate a draft: ${draft.reason} — ${draft.detail}`);
   }
 
   await logAiUsage("Message", prospectId, draft.data.meta);
@@ -105,13 +116,17 @@ export async function generateReplyDraftAction(prospectId: string) {
     include: { messages: { orderBy: { createdAt: "asc" }, where: { status: "SENT" } } },
   });
 
+  if (prospect.messages.length === 0) {
+    redirectWithError(prospectId, "There's no sent message yet to reply to — send outreach first.");
+  }
+
   const draft = await generateReplyDraft({
     businessName: prospect.businessName,
     conversationSoFar: prospect.messages.map((m) => ({ direction: m.direction, body: m.body })),
   });
 
   if (!draft.ok) {
-    throw new Error(`Couldn't generate a draft: ${draft.reason} — ${draft.detail}`);
+    redirectWithError(prospectId, `Couldn't generate a draft: ${draft.reason} — ${draft.detail}`);
   }
 
   await logAiUsage("Message", prospectId, draft.data.meta);
@@ -217,12 +232,12 @@ export async function createCheckoutLinkAction(prospectId: string) {
   const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
 
   if (!prospect.email) {
-    throw new Error("This prospect has no email on file — add one before creating a checkout link.");
+    redirectWithError(prospectId, "This prospect has no email on file — add one before creating a checkout link.");
   }
 
   const checkout = await createCheckoutSession({ prospectId, email: prospect.email });
   if (!checkout.ok) {
-    throw new Error(`Couldn't create a checkout link: ${checkout.reason} — ${checkout.detail}`);
+    redirectWithError(prospectId, `Couldn't create a checkout link: ${checkout.reason} — ${checkout.detail}`);
   }
 
   await prisma.message.create({
