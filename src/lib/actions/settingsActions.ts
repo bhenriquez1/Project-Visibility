@@ -12,6 +12,7 @@ const SETTINGS_KEYS = [
   "manual_ad_outreach_spend_cents",
   "autonomy_level",
   "outbound_daily_limit",
+  "outbound_per_domain_daily_limit",
   "outbound_infrastructure_verified",
 ] as const;
 

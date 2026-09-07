@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { logAiUsage } from "@/lib/cost";
-import { sendEmail } from "@/lib/providers/email";
+import { sendEmail, verifySendingDomainReady } from "@/lib/providers/email";
 import { generateOutreachDraft, generateReplyDraft } from "@/lib/providers/llm";
 import { createCheckoutSession } from "@/lib/providers/stripe";
 import { assertAutomationNotPaused } from "@/lib/automationPause";
@@ -269,15 +269,53 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
     throw new Error("This prospect has no email on file — add one before sending.");
   }
 
+  if (message.prospect.unsubscribedAt) {
+    redirectWithError(message.prospectId, "This prospect unsubscribed — outreach is suppressed.");
+  }
+  if (message.prospect.complainedAt) {
+    redirectWithError(message.prospectId, "This prospect marked a prior message as spam — outreach is suppressed.");
+  }
+
+  const domainReady = await verifySendingDomainReady();
+  if (!domainReady.ok) {
+    redirectWithError(message.prospectId, `Sending is disabled: ${domainReady.reason} — ${domainReady.detail}`);
+  }
+
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const recipientDomain = message.prospect.email.split("@")[1] ?? "";
+
+  const [dailyLimitSetting, domainLimitSetting, sentToday, sentTodayToDomain] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: "outbound_daily_limit" } }),
+    prisma.setting.findUnique({ where: { key: "outbound_per_domain_daily_limit" } }),
+    prisma.message.count({ where: { status: "SENT", sentAt: { gte: todayStart } } }),
+    prisma.message.count({
+      where: { status: "SENT", sentAt: { gte: todayStart }, prospect: { email: { endsWith: `@${recipientDomain}` } } },
+    }),
+  ]);
+  const dailyLimit = Number(dailyLimitSetting?.value ?? 0);
+  const domainLimit = Number(domainLimitSetting?.value ?? 0);
+
+  if (dailyLimit <= 0 || sentToday >= dailyLimit) {
+    redirectWithError(message.prospectId, "Sending is disabled: no daily outbound limit is configured, or today's limit is reached.");
+  }
+  if (domainLimit <= 0 || sentTodayToDomain >= domainLimit) {
+    redirectWithError(message.prospectId, `Sending is disabled: no per-domain daily limit is configured, or today's limit for @${recipientDomain} is reached.`);
+  }
+
   const body = editedBody ?? message.body;
+  const appUrl = process.env.NEXTAUTH_URL ?? "";
 
   const sendResult = await sendEmail({
     to: message.prospect.email,
     subject: message.subject ?? `A note from Local Visibility AI`,
     html: body.replace(/\n/g, "<br />"),
+    idempotencyKey: message.id,
+    unsubscribeUrl: `${appUrl}/unsubscribe/${message.prospectId}`,
   });
 
   if (!sendResult.ok) {
+    await prisma.message.update({ where: { id: messageId }, data: { failedAt: new Date(), providerError: sendResult.detail } });
     throw new Error(`Couldn't send: ${sendResult.reason} — ${sendResult.detail}`);
   }
 
@@ -290,6 +328,7 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
       approvedAt: new Date(),
       sentAt: new Date(),
       providerMessageId: sendResult.data.id,
+      idempotencyKey: message.id,
     },
   });
 
@@ -356,4 +395,17 @@ export async function logInboundReply(prospectId: string, body: string) {
 
   revalidatePath(`/admin/prospects/${prospectId}`);
   revalidatePath("/admin/pipeline");
+}
+
+/**
+ * No auth — this is a public unsubscribe link sent inside outreach emails. Setting
+ * unsubscribedAt is a strictly protective action from the recipient's side; the worst case of
+ * abuse is a prospect getting suppressed from outreach they'd have received anyway.
+ */
+export async function confirmUnsubscribe(prospectId: string) {
+  const prospect = await prisma.prospect.findUnique({ where: { id: prospectId } });
+  if (!prospect) return;
+
+  await prisma.prospect.update({ where: { id: prospectId }, data: { unsubscribedAt: new Date() } });
+  await logEvent("unsubscribed", { prospectId, actorEmail: "recipient:self_service" });
 }

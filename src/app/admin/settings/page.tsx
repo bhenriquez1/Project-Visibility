@@ -9,6 +9,8 @@ const FIELDS: { key: string; label: string; hint: string }[] = [
   { key: "infra_cost_cents_total_per_month", label: "Total infra cost (cents/mo)", hint: "Hosting, DB, etc. — split across active customers" },
   { key: "support_cost_cents_per_customer_per_month", label: "Support cost per customer (cents/mo)", hint: "Your time, valued" },
   { key: "manual_ad_outreach_spend_cents", label: "Manual ad/outreach spend (cents, all-time)", hint: "Feeds CAC until ad platforms are integrated" },
+  { key: "outbound_daily_limit", label: "Outbound emails per day (total)", hint: "0 or unset = sending stays refused, fail closed" },
+  { key: "outbound_per_domain_daily_limit", label: "Outbound emails per recipient domain, per day", hint: "0 or unset = sending stays refused, fail closed" },
 ];
 
 export default async function SettingsPage() {
