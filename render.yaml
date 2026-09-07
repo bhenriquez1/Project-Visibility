@@ -1,0 +1,99 @@
+# Render Blueprint — NOT yet deployed or tested against a real Render account (Claude has no
+# Render API access/credentials in this session). This is best-effort infrastructure-as-code
+# for Brian to review and apply via the Render dashboard's "New Blueprint" flow, not a confirmed
+# working deployment. Verify service names, plan sizes, and region before applying.
+#
+# Two services:
+#   1. project-visibility  — the Next.js app itself.
+#   2. project-visibility-agent-cycle — a scheduled job that calls the existing
+#      /api/internal/agents/run endpoint (src/app/api/internal/agents/run/route.ts) so approved
+#      agents in the AUTONOMOUS operating state actually run unattended, on a schedule, instead
+#      of only ever running when an owner clicks "Run now". That endpoint already exists and is
+#      authorization-gated by CRON_SECRET — this cron job is the only thing missing to make the
+#      autonomous-operations loop live in production.
+
+services:
+  - type: web
+    name: project-visibility
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm run render-build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      # Secrets — set manually in the Render dashboard, never committed to this file or the repo.
+      - key: DATABASE_URL
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AI_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: SERP_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      # Stripe — STRIPE_LIVE_MODE must stay "false" until Brian explicitly approves going live;
+      # createCheckoutSession() hard-blocks on a live-mode key regardless of this flag as a
+      # second, code-level safeguard (see src/lib/providers/stripe.ts).
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_LIVE_MODE
+        value: "false"
+      - key: STRIPE_PRICE_ID_FOUNDING
+        sync: false
+      - key: STRIPE_PRICE_ID_GROWTH
+        sync: false
+      - key: STRIPE_PRICE_ID_PRO
+        sync: false
+      # Shared with the cron job below so it can authenticate to /api/internal/agents/run.
+      - key: CRON_SECRET
+        generateValue: true
+
+  - type: cron
+    name: project-visibility-agent-cycle
+    runtime: node
+    plan: starter
+    region: oregon
+    # Every 15 minutes; each agent still only actually runs when agentOperations.ts's
+    # getAgentOperatingState()/isAgentDue() say it's AUTONOMOUS and due — this just knocks on the
+    # door regularly rather than deciding anything itself.
+    schedule: "*/15 * * * *"
+    buildCommand: "true"
+    startCommand: >-
+      curl -sf -X POST "$APP_URL/api/internal/agents/run"
+      -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: APP_URL
+        sync: false # set to the deployed project-visibility service's public URL
+      - key: CRON_SECRET
+        fromService:
+          type: web
+          name: project-visibility
+          envVarKey: CRON_SECRET

@@ -9,7 +9,9 @@
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "render-build": "prisma generate && prisma migrate deploy && next build"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
