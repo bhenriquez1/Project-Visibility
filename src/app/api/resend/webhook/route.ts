@@ -2,6 +2,83 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
+import { isNormalTransition } from "@/lib/pipelineTransitions";
+
+const AUTO_REPLY_SUBJECT_PATTERNS = [/out of office/i, /automatic reply/i, /auto-?reply/i, /on vacation/i];
+
+/**
+ * Resend's email.received webhook payload is metadata only (from/to/subject/message_id — no
+ * In-Reply-To/References). Real thread-matching needs the Receiving API's full headers, which
+ * needs broader API-key permissions than a "send only" key has — the same limitation
+ * verifySendingDomainReady() hits. This degrades honestly: if the richer fetch fails, it falls
+ * back to matching by from-address against Prospect.email, which this app already treats as the
+ * canonical, unique identifier for a prospect — a real fallback, not a guess.
+ */
+async function handleInboundEmail(apiKey: string, data: { email_id: string; from: string; subject: string }) {
+  const resend = new Resend(apiKey);
+  const fetched = await resend.emails.receiving.get(data.email_id);
+
+  let headers: Record<string, string> | null = null;
+  let body = "(No text content was available from the inbound email.)";
+
+  if (!fetched.error && fetched.data) {
+    headers = fetched.data.headers;
+    body = fetched.data.text ?? fetched.data.html ?? body;
+  } else {
+    await logEvent("inbound_email_fetch_failed", {
+      payload: { emailId: data.email_id, detail: fetched.error?.message ?? "Resend returned no data." },
+    });
+  }
+
+  const autoSubmitted = headers?.["Auto-Submitted"] ?? headers?.["auto-submitted"];
+  const looksAutomatic =
+    (Boolean(autoSubmitted) && autoSubmitted!.toLowerCase() !== "no") ||
+    AUTO_REPLY_SUBJECT_PATTERNS.some((pattern) => pattern.test(data.subject));
+  if (looksAutomatic) {
+    await logEvent("inbound_auto_reply_detected", { payload: { emailId: data.email_id, from: data.from, subject: data.subject } });
+    return;
+  }
+
+  let prospectId: string | null = null;
+  let matchMethod = "";
+
+  if (headers) {
+    const threadHeader = `${headers["In-Reply-To"] ?? headers["in-reply-to"] ?? ""} ${headers["References"] ?? headers["references"] ?? ""}`;
+    const idMatch = threadHeader.match(/<([a-z0-9]+)@/i);
+    if (idMatch) {
+      const original = await prisma.message.findUnique({ where: { id: idMatch[1] } });
+      if (original) {
+        prospectId = original.prospectId;
+        matchMethod = "message_id_threading";
+      }
+    }
+  }
+  if (!prospectId) {
+    const prospect = await prisma.prospect.findUnique({ where: { email: data.from } });
+    if (prospect) {
+      prospectId = prospect.id;
+      matchMethod = "from_address_fallback";
+    }
+  }
+  if (!prospectId) {
+    await logEvent("inbound_email_unmatched", { payload: { emailId: data.email_id, from: data.from } });
+    return;
+  }
+
+  const existing = await prisma.message.findFirst({ where: { providerMessageId: data.email_id } });
+  if (existing) return; // same physical email reported twice under different webhook deliveries
+
+  const inbound = await prisma.message.create({
+    data: { prospectId, direction: "INBOUND", status: "SENT", body, sentAt: new Date(), providerMessageId: data.email_id },
+  });
+
+  const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
+  if (isNormalTransition(prospect.status, "REPLIED")) {
+    await prisma.prospect.update({ where: { id: prospectId }, data: { status: "REPLIED" } });
+    await logEvent("status_changed", { prospectId, payload: { status: "REPLIED", from: prospect.status }, actorEmail: "system:resend_inbound" });
+  }
+  await logEvent("reply_received", { prospectId, payload: { messageId: inbound.id, matchMethod } });
+}
 
 export async function POST(req: Request) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -83,11 +160,7 @@ export async function POST(req: Request) {
     }
 
     case "email.received": {
-      // TODO(Phase G): match to the right prospect/conversation and move CONTACTED -> REPLIED.
-      // Needs Brian's decision first — inbound receiving requires either an MX record pointed at
-      // Resend for a subdomain, or a Resend-managed resend.app address; neither is configured
-      // yet. Logged, not dropped, so nothing is silently lost once that's set up.
-      await logEvent("inbound_email_received_unhandled", { payload: { emailId: event.data.email_id, from: event.data.from } });
+      await handleInboundEmail(apiKey, event.data);
       break;
     }
 

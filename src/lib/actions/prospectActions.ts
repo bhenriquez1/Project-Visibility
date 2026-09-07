@@ -312,6 +312,7 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
     html: body.replace(/\n/g, "<br />"),
     idempotencyKey: message.id,
     unsubscribeUrl: `${appUrl}/unsubscribe/${message.prospectId}`,
+    messageId: message.id,
   });
 
   if (!sendResult.ok) {

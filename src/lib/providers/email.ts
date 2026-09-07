@@ -7,9 +7,14 @@ export async function sendEmail(input: {
   html: string;
   idempotencyKey?: string;
   unsubscribeUrl?: string;
+  /** Embedded into a real Message-ID header — a stable identifier a reply's In-Reply-To/
+   * References can point back to, so an inbound webhook can thread it to this exact message
+   * rather than only guessing from the sender's address. */
+  messageId?: string;
 }): Promise<ProviderResult<{ id: string }>> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
+  const replyTo = process.env.RESEND_INBOUND_REPLY_TO;
 
   if (!apiKey || !from) {
     return notConfigured("RESEND_API_KEY / RESEND_FROM_EMAIL is not set.");
@@ -21,21 +26,22 @@ export async function sendEmail(input: {
       ? `${input.html}<p style="margin-top:24px;font-size:12px;color:#888;">Don't want these emails? <a href="${input.unsubscribeUrl}">Unsubscribe</a>.</p>`
       : input.html;
 
+    const fromDomain = from.split("@")[1] ?? "localvisibilityai.invalid";
+    const headers: Record<string, string> = {};
+    if (input.messageId) headers["Message-ID"] = `<${input.messageId}@${fromDomain}>`;
+    if (input.unsubscribeUrl) {
+      headers["List-Unsubscribe"] = `<${input.unsubscribeUrl}>`;
+      headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+    }
+
     const { data, error } = await resend.emails.send(
       {
         from,
         to: input.to,
         subject: input.subject,
         html,
-        // RFC 8058 one-click unsubscribe — real deliverability practice, not just a footer link.
-        ...(input.unsubscribeUrl
-          ? {
-              headers: {
-                "List-Unsubscribe": `<${input.unsubscribeUrl}>`,
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-              },
-            }
-          : {}),
+        ...(replyTo ? { replyTo } : {}),
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
       },
       input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined
     );
