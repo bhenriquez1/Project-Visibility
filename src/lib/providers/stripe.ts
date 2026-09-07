@@ -59,7 +59,7 @@ export async function createCheckoutSession(input: {
     const snapshotKey = `catalog_snapshot_${randomUUID()}`;
     const allowances = { ...plan.allowances };
     for (const addon of addons) for (const [key, value] of Object.entries(addon!.allowances)) allowances[key] = (allowances[key] ?? 0) + value;
-    await prisma.setting.create({ data: { key: snapshotKey, value: JSON.stringify({ ...plan, allowances, monthlyPriceCents: plan.monthlyPriceCents + addons.reduce((sum, a) => sum + a!.monthlyPriceCents, 0), features: [...new Set([...plan.features, ...addons.flatMap(a => a!.features)])] }) } });
+    await prisma.setting.create({ data: { key: snapshotKey, value: JSON.stringify({ ...plan, allowances, monthlyPriceCents: plan.monthlyPriceCents + addons.reduce((sum, a) => sum + a!.monthlyPriceCents, 0), features: [...new Set([...plan.features, ...addons.flatMap(a => a!.features)])], addonIds: input.addonIds ?? [] }) } });
     const session = await client.checkout.sessions.create({
       mode: "subscription",
       allow_promotion_codes: catalog.promotionsEnabled,

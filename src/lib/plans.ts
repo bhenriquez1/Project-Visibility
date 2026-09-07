@@ -16,6 +16,7 @@ export interface PlanDefinition {
   name: string;
   monthlyPriceCents: number;
   stripePriceEnvKey: string;
+  addonIds?: string[];
   entitlements: PlanEntitlements;
 }
 

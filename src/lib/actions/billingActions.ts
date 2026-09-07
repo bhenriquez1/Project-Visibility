@@ -41,7 +41,7 @@ export async function ownerTestBilling(form: FormData) {
     const allowances = { ...plan.allowances };
     for (const addon of addons) for (const [key, value] of Object.entries(addon!.allowances)) allowances[key] = (allowances[key] ?? 0) + value;
     const key = `catalog_snapshot_${randomUUID()}`;
-    await prisma.setting.create({ data: { key, value: JSON.stringify({ ...plan, allowances, features: [...new Set(items.flatMap(i => i.features))], monthlyPriceCents: items.reduce((sum, i) => sum + i.monthlyPriceCents, 0) }) } });
+    await prisma.setting.create({ data: { key, value: JSON.stringify({ ...plan, allowances, features: [...new Set(items.flatMap(i => i.features))], monthlyPriceCents: items.reduce((sum, i) => sum + i.monthlyPriceCents, 0), addonIds }) } });
     await client.subscriptions.update(subscription.id, {
       items: [...subscription.items.data.map(i => ({ id: i.id, deleted: true as const })), ...items.map(i => ({ price: i.stripeMonthlyPriceId!, quantity: 1 }))],
       proration_behavior: "none", payment_behavior: "error_if_incomplete", metadata: { ...subscription.metadata, planId: key },

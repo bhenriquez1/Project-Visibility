@@ -28,6 +28,10 @@ export type PricingCatalog = z.infer<typeof catalogSchema>;
 export type CatalogItem = z.infer<typeof catalogItemSchema>;
 export const CATALOG_KEY = "pricing_catalog_v1";
 
+export const catalogSnapshotSchema = catalogItemSchema.extend({
+  addonIds: z.array(z.string()).default([]),
+}).strict();
+
 const visibility = ["Google/local visibility monitoring", "Local opportunity analysis", "GBP optimization recommendations", "Competitor monitoring", "Review monitoring", "AI-assisted review replies", "Monthly performance report", "AI Growth Manager", "Customer dashboard"];
 const growth = [...visibility, "Lead Follow-Up Automation", "Review Request Automation", "Enhanced conversion tracking", "Automated follow-up sequences", "Appointment/lead tracking", "Enhanced competitor intelligence", "More frequent reporting"];
 const revenue = [...growth, "Missed-Call Text-Back", "AI lead qualification", "AI booking workflows", "Estimate/Quote Follow-Up", "Customer Re-engagement", "Advanced CRM workflows", "Revenue recovery dashboard", "Attribution reporting", "Advanced automation"];
@@ -57,8 +61,8 @@ export async function resolveCatalogPlan(value: string): Promise<PlanDefinition 
   if (value.startsWith("catalog_snapshot_")) {
     const snapshot = await prisma.setting.findUnique({ where: { key: value } });
     if (!snapshot) throw new Error("Subscription entitlement snapshot is missing.");
-    const plan = catalogItemSchema.parse(JSON.parse(snapshot.value));
-    return { id: plan.id, name: plan.name, monthlyPriceCents: plan.monthlyPriceCents, stripePriceEnvKey: "", entitlements: { ...PLANS.founding.entitlements, ...plan.allowances, autonomousExternalActions: false } };
+    const plan = catalogSnapshotSchema.parse(JSON.parse(snapshot.value));
+    return { id: plan.id, name: plan.name, monthlyPriceCents: plan.monthlyPriceCents, stripePriceEnvKey: "", addonIds: plan.addonIds, entitlements: { ...PLANS.founding.entitlements, ...plan.allowances, autonomousExternalActions: false } };
   }
   // Unversioned old subscriptions retain the original contract, including old Growth limits.
   if (["founding", "growth", "pro"].includes(value)) return null;

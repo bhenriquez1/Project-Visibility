@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { resolveStoredPlan } from "@/lib/plans";
-import { getPricingCatalog } from "@/lib/pricingCatalog";
+import { getPricingCatalog, resolveCatalogPlan } from "@/lib/pricingCatalog";
+import { customerOfferSchema } from "@/lib/customerOffers";
 import { computeRetentionSignals, type RetentionRisk } from "@/lib/retention";
 import { startImpersonation } from "@/lib/actions/impersonationActions";
 
@@ -27,6 +28,31 @@ export default async function CustomersPage() {
     await Promise.all(customers.map(async (c) => [c.id, await computeRetentionSignals(c.id)] as const))
   );
 
+  const planByProspect = new Map(
+    await Promise.all(
+      customers.map(async (c) => {
+        const sub = c.subscriptions[0];
+        if (!sub) return [c.id, null] as const;
+        const plan = (await resolveCatalogPlan(sub.plan)) ?? resolveStoredPlan(sub.plan);
+        return [c.id, plan] as const;
+      })
+    )
+  );
+
+  const offerByProspect = new Map(
+    await Promise.all(
+      customers.map(async (c) => {
+        const row = await prisma.setting.findUnique({ where: { key: `customer_offer_${c.id}` } });
+        if (!row) return [c.id, null] as const;
+        try {
+          return [c.id, customerOfferSchema.parse(JSON.parse(row.value))] as const;
+        } catch {
+          return [c.id, null] as const;
+        }
+      })
+    )
+  );
+
   return (
     <div className="max-w-4xl">
       <h1 className="text-xl font-semibold">Customers</h1>
@@ -40,9 +66,11 @@ export default async function CustomersPage() {
         <div className="mt-6 flex flex-col gap-3">
           {customers.map((c) => {
             const sub = c.subscriptions[0];
-            const plan = sub ? catalog.plans.find(p => p.id === sub.plan) ?? resolveStoredPlan(sub.plan) : null;
+            const plan = planByProspect.get(c.id) ?? null;
             const risk = retentionByProspect.get(c.id)?.riskLevel ?? "low";
             const gbpConnected = c.googleBusinessConnection && !c.googleBusinessConnection.revokedAt;
+            const addonNames = (plan?.addonIds ?? []).map(id => catalog.addons.find(a => a.id === id)?.name ?? id);
+            const offer = offerByProspect.get(c.id);
 
             return (
               <div key={c.id} className="rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">
@@ -61,6 +89,18 @@ export default async function CustomersPage() {
                   <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
                     {plan ? plan.name : "no plan resolved"} {sub ? `· ${sub.status}` : "· no subscription"}
                   </span>
+                  {addonNames.length > 0 && (
+                    <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
+                      Add-ons: {addonNames.join(", ")}
+                    </span>
+                  )}
+                  {offer && (
+                    <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
+                      Custom offer: {offer.plan.name} ${(offer.plan.monthlyPriceCents / 100).toFixed(2)}/mo
+                      {offer.founding ? ", Founding" : ""}
+                      {offer.revoked ? " — revoked" : ""}
+                    </span>
+                  )}
                   <span className="rounded-full bg-black/5 px-2 py-1 dark:bg-white/10">
                     {gbpConnected ? "GBP connected" : "GBP not connected"}
                   </span>

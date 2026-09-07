@@ -9,3 +9,4 @@ export const customerOfferSchema = z.object({
   approvedAt: z.string(),
   reason: z.string().trim().min(3).max(500),
 }).strict();
+export type CustomerOffer = z.infer<typeof customerOfferSchema>;
