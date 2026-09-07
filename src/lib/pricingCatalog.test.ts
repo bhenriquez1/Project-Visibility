@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-import { catalogSchema, initialCatalog } from "./pricingCatalog";
+import { catalogSchema, catalogSnapshotSchema, initialCatalog } from "./pricingCatalog";
 import { monthlyRecurringCents } from "./billingMath";
 
 describe("owner pricing contract", () => {
@@ -27,5 +27,10 @@ describe("owner pricing contract", () => {
   });
   it("rejects variable charges as fixed MRR", () => {
     expect(() => monthlyRecurringCents([{ price: { unit_amount: null, currency: "usd", recurring: { interval: "month", interval_count: 1, usage_type: "metered" } } }])).toThrow();
+  });
+  it("defaults a checkout snapshot's addonIds to [] for pre-existing rows that never recorded them", () => {
+    const plan = initialCatalog().plans[0];
+    expect(catalogSnapshotSchema.parse(plan).addonIds).toEqual([]);
+    expect(catalogSnapshotSchema.parse({ ...plan, addonIds: ["missed_call_ai"] }).addonIds).toEqual(["missed_call_ai"]);
   });
 });
