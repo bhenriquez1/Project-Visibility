@@ -37,6 +37,12 @@ enum ProspectStatus {
   LOST
 }
 
+enum ProspectCategory {
+  PRODUCTION
+  INTERNAL
+  QA_TEST
+}
+
 model Prospect {
   id           String         @id @default(cuid())
   businessName String
@@ -78,6 +84,14 @@ model Prospect {
   // Visible next action + follow-up date per prospect (Owner Command Center).
   nextActionLabel String?
   nextActionDueAt DateTime?
+
+  // Distinguishes a genuine prospect/customer from Brian's own company's record (INTERNAL,
+  // e.g. self-submitted through the public audit form) and from a QA/test fixture created while
+  // verifying the app itself (QA_TEST). Only PRODUCTION counts toward MRR, customer counts,
+  // conversion/funnel metrics, or is eligible for autonomous outreach — see economics.ts and
+  // agents/sales.ts. Defaults to PRODUCTION since every real discovery/signup path is real by
+  // construction; QA_TEST/INTERNAL are only ever set explicitly, never inferred.
+  category ProspectCategory @default(PRODUCTION)
 
   audits                   Audit[]
   messages                 Message[]

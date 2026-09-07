@@ -34,34 +34,37 @@ export async function getNeedsAttentionItems(): Promise<AttentionItem[]> {
 
   const [latestAudits, contactReviewProspects, deliveryFailures, unansweredReplies, overdueFollowUps, pastDueSubscriptions, providerProblems] =
     await Promise.all([
+      // QA/internal fixtures must never count toward operational metrics either — every branch
+      // below is scoped to real PRODUCTION prospects (see ProspectCategory).
       prisma.audit.findMany({
         distinct: ["prospectId"],
         orderBy: [{ prospectId: "asc" }, { requestedAt: "desc" }],
+        where: { prospect: { category: "PRODUCTION" } },
         include: { prospect: { select: { id: true, businessName: true } } },
       }),
       prisma.prospect.findMany({
-        where: { status: { notIn: ["PROSPECT", "LOST"] }, OR: [{ email: null }, { emailVerified: false }] },
+        where: { status: { notIn: ["PROSPECT", "LOST"] }, category: "PRODUCTION", OR: [{ email: null }, { emailVerified: false }] },
         select: { id: true, businessName: true, updatedAt: true },
       }),
       prisma.message.findMany({
-        where: { OR: [{ bouncedAt: { not: null } }, { complainedAt: { not: null } }, { failedAt: { not: null } }] },
+        where: { OR: [{ bouncedAt: { not: null } }, { complainedAt: { not: null } }, { failedAt: { not: null } }], prospect: { category: "PRODUCTION" } },
         orderBy: { createdAt: "desc" },
         include: { prospect: { select: { id: true, businessName: true } } },
       }),
       prisma.prospect.findMany({
-        where: { status: "REPLIED" },
+        where: { status: "REPLIED", category: "PRODUCTION" },
         select: { id: true, businessName: true, updatedAt: true },
       }),
       prisma.prospect.findMany({
-        where: { nextActionDueAt: { lt: now }, status: { notIn: ["WON", "LOST"] } },
+        where: { nextActionDueAt: { lt: now }, status: { notIn: ["WON", "LOST"] }, category: "PRODUCTION" },
         select: { id: true, businessName: true, nextActionLabel: true, nextActionDueAt: true },
       }),
       prisma.subscription.findMany({
-        where: { status: "PAST_DUE" },
+        where: { status: "PAST_DUE", prospect: { category: "PRODUCTION" } },
         include: { prospect: { select: { id: true, businessName: true } } },
       }),
       prisma.event.findMany({
-        where: { type: { in: PROBLEM_EVENT_TYPES }, createdAt: { gte: sevenDaysAgo } },
+        where: { type: { in: PROBLEM_EVENT_TYPES }, createdAt: { gte: sevenDaysAgo }, OR: [{ prospect: { category: "PRODUCTION" } }, { prospect: null }] },
         orderBy: { createdAt: "desc" },
         take: 50,
         include: { prospect: { select: { id: true, businessName: true } } },

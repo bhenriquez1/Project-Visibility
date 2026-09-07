@@ -21,7 +21,8 @@ export const salesAgent: Agent = {
 
   async proposeActions(): Promise<AgentAction[]> {
     const candidates = await prisma.prospect.findMany({
-      where: { status: "AUDITED", messages: { none: {} } },
+      // QA/internal fixtures must never receive autonomous outreach — see ProspectCategory.
+      where: { status: "AUDITED", category: "PRODUCTION", messages: { none: {} } },
       select: { id: true, businessName: true, email: true },
       take: await getAgentBatchLimit("sales"),
     });

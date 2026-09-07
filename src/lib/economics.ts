@@ -47,11 +47,13 @@ export interface EconomicsSummary {
 }
 
 export async function computeEconomics(): Promise<EconomicsSummary> {
+  // QA/internal fixtures must never count toward MRR, customer, or funnel metrics — every query
+  // below is scoped to real PRODUCTION prospects (see ProspectCategory).
   const [activeSubs, subscriptionGroups, allProspects, infraTotalCents, supportPerCustomerCents] =
     await Promise.all([
-      prisma.subscription.findMany({ where: { status: "ACTIVE" }, include: { prospect: true } }),
-      prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
-      prisma.prospect.findMany({ select: { status: true } }),
+      prisma.subscription.findMany({ where: { status: "ACTIVE", prospect: { category: "PRODUCTION" } }, include: { prospect: true } }),
+      prisma.subscription.groupBy({ by: ["status"], where: { prospect: { category: "PRODUCTION" } }, _count: { _all: true } }),
+      prisma.prospect.findMany({ where: { category: "PRODUCTION" }, select: { status: true } }),
       getSettingCents("infra_cost_cents_total_per_month"),
       getSettingCents("support_cost_cents_per_customer_per_month"),
     ]);
@@ -86,7 +88,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const newCustomersLast7Days = await prisma.subscription.count({
-    where: { createdAt: { gte: sevenDaysAgo } },
+    where: { createdAt: { gte: sevenDaysAgo }, prospect: { category: "PRODUCTION" } },
   });
 
   const openPipelineCount = allProspects.filter(

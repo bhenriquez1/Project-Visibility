@@ -13,10 +13,17 @@ const RISK_STYLES: Record<RetentionRisk, string> = {
   high: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
-export default async function CustomersPage() {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const query = await searchParams;
+  // Defaults to real paying customers only — QA/internal fixtures never count toward this list
+  // unless explicitly requested. See ProspectCategory.
+  const category = String(query.category ?? "production");
   const catalog = await getPricingCatalog();
   const customers = await prisma.prospect.findMany({
-    where: { status: "WON" },
+    where: {
+      status: "WON",
+      ...(category === "production" ? { category: "PRODUCTION" as const } : category === "internal" ? { category: "INTERNAL" as const } : category === "qa_test" ? { category: "QA_TEST" as const } : {}),
+    },
     orderBy: { updatedAt: "desc" },
     include: {
       subscriptions: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -60,6 +67,17 @@ export default async function CustomersPage() {
         Every paying customer — plan, subscription health, and retention risk.
       </p>
 
+      <form className="mt-4 flex items-center gap-2 text-sm">
+        <label htmlFor="category" className="text-xs text-black/60 dark:text-white/60">Show</label>
+        <select id="category" name="category" defaultValue={category} className="rounded border px-2 py-1.5 dark:bg-black/20">
+          <option value="production">Production (real customers)</option>
+          <option value="internal">Internal Avrrio</option>
+          <option value="qa_test">QA / Test fixtures</option>
+          <option value="all">All categories</option>
+        </select>
+        <button className="rounded bg-black px-3 py-1.5 text-xs text-white dark:bg-white dark:text-black">Apply</button>
+      </form>
+
       {customers.length === 0 ? (
         <p className="mt-6 text-sm text-black/50 dark:text-white/50">No customers yet.</p>
       ) : (
@@ -79,6 +97,11 @@ export default async function CustomersPage() {
                     <Link href={`/admin/prospects/${c.id}`} className="font-medium hover:underline">
                       {c.businessName}
                     </Link>
+                    {c.category !== "PRODUCTION" && (
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${c.category === "QA_TEST" ? "bg-amber-200 text-amber-900 dark:bg-amber-900/50 dark:text-amber-300" : "bg-blue-200 text-blue-900 dark:bg-blue-900/50 dark:text-blue-300"}`}>
+                        {c.category === "QA_TEST" ? "QA-TEST" : "INTERNAL"}
+                      </span>
+                    )}
                     <p className="text-xs text-black/50 dark:text-white/50">{c.city}</p>
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${RISK_STYLES[risk]}`}>
