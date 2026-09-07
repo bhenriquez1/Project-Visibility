@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const SETTINGS_KEYS = [
-  "founding_price_cents",
   "places_cost_cents_per_call",
   "serp_cost_cents_per_call",
   "infra_cost_cents_total_per_month",

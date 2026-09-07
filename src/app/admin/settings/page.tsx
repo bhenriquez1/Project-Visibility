@@ -4,7 +4,6 @@ import { updateSettings } from "@/lib/actions/settingsActions";
 import { AGENT_NAMES, DEFAULT_INTERVAL_MINUTES } from "@/lib/agentOperations";
 
 const FIELDS: { key: string; label: string; hint: string }[] = [
-  { key: "founding_price_cents", label: "Founding price (cents/mo)", hint: "15000 = $150/mo" },
   { key: "places_cost_cents_per_call", label: "Google Places cost per call (cents)", hint: "Check your GCP billing plan" },
   { key: "serp_cost_cents_per_call", label: "SERP API cost per call (cents)", hint: "Check your SerpAPI plan" },
   { key: "infra_cost_cents_total_per_month", label: "Total infra cost (cents/mo)", hint: "Hosting, DB, etc. — split across active customers" },
@@ -21,6 +20,11 @@ export default async function SettingsPage() {
       <h1 className="text-xl font-semibold">Settings</h1>
       <p className="mt-1 text-sm text-black/60 dark:text-white/60">
         These feed the economics dashboard directly — unset values are treated as $0, not guessed.
+        Plan and add-on pricing lives in{" "}
+        <a href="/admin/pricing" className="underline">
+          Pricing &amp; Plans
+        </a>
+        , not here.
       </p>
       <form action={updateSettings} className="mt-6 flex flex-col gap-4">
         <div className="rounded-lg border border-black/10 p-4 dark:border-white/10">

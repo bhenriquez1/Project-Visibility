@@ -29,8 +29,11 @@ export function listRunnableAgents(): Agent[] {
 }
 
 /**
- * Manually triggered — no scheduler here (see ENGINEERING_STANDARDS.md / the V3 plan). Creates
- * an AgentRun row up front so a failure is always recorded, not silently swallowed.
+ * Called either from an owner's manual "Run now" click or from the cron-secret-protected
+ * /api/internal/agents/run endpoint, which only invokes this for agents currently in the
+ * AUTONOMOUS operating state (see src/lib/agentOperations.ts) — never for APPROVAL_REQUIRED,
+ * PAUSED, DEGRADED, or ERROR. Creates an AgentRun row up front so a failure is always recorded,
+ * not silently swallowed, regardless of which caller triggered it.
  */
 export async function runAgent(name: AgentName): Promise<{ agentRunId: string }> {
   const agent = (REGISTRY as Record<string, Agent | undefined>)[name];

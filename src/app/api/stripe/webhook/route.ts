@@ -33,6 +33,18 @@ export async function POST(req: Request) {
     );
   }
 
+  // Stripe retries deliveries (and can occasionally send the same event twice even without a
+  // retry). Claim the event id atomically via a unique-key create — a duplicate delivery loses
+  // the race, catches the unique-constraint error, and returns success without re-running any
+  // side effect (subscription writes are naturally idempotent, but Event-log rows below are not).
+  try {
+    await prisma.setting.create({
+      data: { key: `stripe_event_${event.id}`, value: new Date().toISOString() },
+    });
+  } catch {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
