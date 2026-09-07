@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { logAiUsage } from "@/lib/cost";
 import { sendEmail, verifySendingDomainReady } from "@/lib/providers/email";
-import { generateOutreachDraft, generateReplyDraft } from "@/lib/providers/llm";
+import { generateOutreachDraft, generateReplyDraft, extractQualificationSignals } from "@/lib/providers/llm";
 import { createCheckoutSession } from "@/lib/providers/stripe";
 import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
@@ -193,16 +193,21 @@ export async function generateReplyDraftAction(prospectId: string) {
 
   const prospect = await prisma.prospect.findUniqueOrThrow({
     where: { id: prospectId },
-    include: { messages: { orderBy: { createdAt: "asc" }, where: { status: "SENT" } } },
+    include: { messages: { orderBy: { createdAt: "asc" }, where: { status: { in: ["SENT", "PENDING_APPROVAL"] } } } },
   });
 
-  if (prospect.messages.length === 0) {
-    redirectWithError(prospectId, "There's no sent message yet to reply to — send outreach first.");
+  const sentMessages = prospect.messages.filter((m) => m.status === "SENT");
+  const hasRealInboundReply = sentMessages.some((m) => m.direction === "INBOUND");
+  if (!hasRealInboundReply) {
+    redirectWithError(prospectId, "There's no real inbound reply yet — this drafts a reply, not a follow-up to your own outreach.");
+  }
+  if (prospect.messages.some((m) => m.status === "PENDING_APPROVAL")) {
+    redirectWithError(prospectId, "There's already a draft pending approval for this prospect — review or reject it before generating another.");
   }
 
   const draft = await generateReplyDraft({
     businessName: prospect.businessName,
-    conversationSoFar: prospect.messages.map((m) => ({ direction: m.direction, body: m.body })),
+    conversationSoFar: sentMessages.map((m) => ({ direction: m.direction, body: m.body })),
   });
 
   if (!draft.ok) {
@@ -409,4 +414,51 @@ export async function confirmUnsubscribe(prospectId: string) {
 
   await prisma.prospect.update({ where: { id: prospectId }, data: { unsubscribedAt: new Date() } });
   await logEvent("unsubscribed", { prospectId, actorEmail: "recipient:self_service" });
+}
+
+/**
+ * Purely informational — never touches Prospect.status. Brian reads the suggestions and decides
+ * whether to move the prospect to QUALIFIED using the existing status controls.
+ */
+export async function extractQualificationSignalsAction(prospectId: string) {
+  const actorEmail = await requireAdmin();
+
+  const prospect = await prisma.prospect.findUniqueOrThrow({
+    where: { id: prospectId },
+    include: { messages: { orderBy: { createdAt: "asc" }, where: { status: "SENT" } } },
+  });
+
+  if (prospect.messages.length === 0) {
+    redirectWithError(prospectId, "There's no conversation yet to extract qualification signals from.");
+  }
+
+  const result = await extractQualificationSignals({
+    businessName: prospect.businessName,
+    conversationSoFar: prospect.messages.map((m) => ({ direction: m.direction, body: m.body })),
+  });
+
+  if (!result.ok) {
+    redirectWithError(prospectId, `Couldn't extract qualification signals: ${result.reason} — ${result.detail}`);
+  }
+
+  await logAiUsage("QualificationSignals", prospectId, result.data.meta);
+  await logEvent("qualification_signals_extracted", { prospectId, payload: { signals: result.data.signals }, actorEmail });
+
+  revalidatePath(`/admin/prospects/${prospectId}`);
+}
+
+export async function setNextAction(prospectId: string, label: string, dueAt: string) {
+  const actorEmail = await requireAdmin();
+
+  await prisma.prospect.update({
+    where: { id: prospectId },
+    data: {
+      nextActionLabel: label.trim() || null,
+      nextActionDueAt: dueAt ? new Date(dueAt) : null,
+    },
+  });
+  await logEvent("next_action_set", { prospectId, payload: { label, dueAt }, actorEmail });
+
+  revalidatePath(`/admin/prospects/${prospectId}`);
+  revalidatePath("/admin/pipeline");
 }

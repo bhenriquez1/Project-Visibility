@@ -7,11 +7,13 @@ import {
   approveAndSendMessage,
   composeManualMessage,
   createCheckoutLinkAction,
+  extractQualificationSignalsAction,
   generateOutreachDraftAction,
   generateReplyDraftAction,
   logInboundReply,
   overrideProspectStatus,
   rejectMessage,
+  setNextAction,
   setProspectEmail,
   setProspectObjectives,
   updateProspectStatus,
@@ -42,6 +44,12 @@ export default async function ProspectDetailPage({
 
   if (!prospect) notFound();
   const automationPaused = await isProspectPaused(prospect.id);
+  const latestQualificationEvent = await prisma.event.findFirst({
+    where: { prospectId: prospect.id, type: "qualification_signals_extracted" },
+    orderBy: { createdAt: "desc" },
+  });
+  const qualificationSignals =
+    (latestQualificationEvent?.payload as { signals?: { signal: string; evidence: string }[] } | null)?.signals ?? [];
 
   const audit = prospect.audits[0];
   const pendingMessages = prospect.messages.filter((m) => m.status === "PENDING_APPROVAL");
@@ -123,6 +131,43 @@ export default async function ProspectDetailPage({
           </button>
         </form>
       </details>
+
+      <div className="mt-4 rounded-md border border-black/10 p-3 text-sm dark:border-white/10">
+        <div className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+          Next action
+        </div>
+        {prospect.nextActionLabel || prospect.nextActionDueAt ? (
+          <p className="mt-1">
+            {prospect.nextActionLabel ?? "(no label set)"}
+            {prospect.nextActionDueAt && ` — due ${prospect.nextActionDueAt.toLocaleDateString()}`}
+          </p>
+        ) : (
+          <p className="mt-1 text-black/50 dark:text-white/50">No follow-up set.</p>
+        )}
+        <form
+          action={async (formData: FormData) => {
+            "use server";
+            await setNextAction(prospect.id, String(formData.get("label") ?? ""), String(formData.get("dueAt") ?? ""));
+          }}
+          className="mt-2 flex flex-wrap items-center gap-2"
+        >
+          <input
+            name="label"
+            defaultValue={prospect.nextActionLabel ?? ""}
+            placeholder="e.g. Follow up on pricing question"
+            className="min-w-[14rem] flex-1 rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+          />
+          <input
+            name="dueAt"
+            type="date"
+            defaultValue={prospect.nextActionDueAt ? prospect.nextActionDueAt.toISOString().slice(0, 10) : ""}
+            className="rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+          />
+          <button className="rounded-md border border-black/15 px-3 py-1 text-xs font-medium dark:border-white/20">
+            Save
+          </button>
+        </form>
+      </div>
 
       {prospect.status === "WON" && (
         <section className="mt-6 rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">
@@ -264,8 +309,34 @@ export default async function ProspectDetailPage({
                 Create checkout link
               </button>
             </form>
+            <form
+              action={async () => {
+                "use server";
+                await extractQualificationSignalsAction(prospect.id);
+              }}
+            >
+              <button className="rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium dark:border-white/20">
+                Extract qualification signals
+              </button>
+            </form>
           </div>
         </div>
+
+        {qualificationSignals.length > 0 && (
+          <div className="mt-4 rounded-md border border-black/10 p-3 text-sm dark:border-white/10">
+            <div className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+              Qualification signals (suggestions — nothing here changes the pipeline stage)
+            </div>
+            <ul className="mt-2 flex flex-col gap-2">
+              {qualificationSignals.map((s, i) => (
+                <li key={i}>
+                  <span className="font-medium">{s.signal}</span>
+                  <p className="text-xs italic text-black/60 dark:text-white/60">&quot;{s.evidence}&quot;</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-4">
           {pendingMessages.map((message) => (

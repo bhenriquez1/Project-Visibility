@@ -277,8 +277,11 @@ export async function generateReplyDraft(input: {
     .join("\n\n");
 
   const prompt = `Continue this email conversation with "${input.businessName}" naturally, addressing
-their most recent message. No hype, no fake urgency, no guaranteed ranking claims. Keep it under
-120 words.
+their most recent message. No hype, no fake urgency, no guaranteed ranking claims. Never promise
+a discount, a specific price, a contract term, a refund, or any change to their billing or
+subscription — those require Brian's explicit approval and this draft cannot commit to them. If
+they ask about pricing or terms, acknowledge the question and say Brian will follow up on it
+directly, rather than answering it yourself. Keep it under 120 words.
 
 ${thread}
 
@@ -467,4 +470,52 @@ Estimate: ${input.serviceDescription}, $${(input.amountCents / 100).toFixed(2)}
 Respond with JSON: {"subject": string, "body": string}`;
 
   return completeAndParse(client, prompt, draftSchema);
+}
+
+/**
+ * Every `evidence` string must be a real quote from the conversation — validated the same way
+ * outreachDraftSchema validates evidenceUsed against real audit findings, so a "signal" can never
+ * be backed by something nobody actually said.
+ */
+function qualificationSignalsSchema(messageBodies: string[]) {
+  const normalized = messageBodies.map((m) => m.toLowerCase());
+  const signalSchema = z
+    .object({ signal: z.string(), evidence: z.string() })
+    .strict()
+    .refine((s) => normalized.some((m) => m.includes(s.evidence.toLowerCase())), {
+      message: "evidence must be a real, verbatim quote from the conversation, not a paraphrase or invention.",
+    });
+  return z.object({ signals: z.array(signalSchema) }).strict();
+}
+
+export type QualificationSignal = { signal: string; evidence: string };
+export type QualificationSignalsOutput = { signals: QualificationSignal[] } & { meta: AiCallMeta };
+
+/**
+ * Observations with receipts, not a score or a recommendation — Brian decides what to do with
+ * them. Never asked to suggest moving the prospect anywhere; that stays a human decision.
+ */
+export async function extractQualificationSignals(input: {
+  businessName: string;
+  conversationSoFar: { direction: "OUTBOUND" | "INBOUND"; body: string }[];
+}): Promise<ProviderResult<QualificationSignalsOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const thread = input.conversationSoFar
+    .map((m) => `${m.direction === "OUTBOUND" ? "Us" : input.businessName}: ${m.body}`)
+    .join("\n\n");
+
+  const prompt = `Read this email conversation with "${input.businessName}" and list any concrete
+qualification signals you can find — things like a mentioned budget, a stated timeline, a named
+decision-maker, or explicit interest in moving forward. For each one, quote the exact sentence or
+phrase from the conversation that supports it — never summarize or invent a signal that isn't
+directly stated. If there's nothing concrete, return an empty list rather than guessing. Do not
+recommend any action or score how qualified they are — only report what was actually said.
+
+${thread}
+
+Respond with JSON: {"signals": [{"signal": string, "evidence": string}]}`;
+
+  return completeAndParse(client, prompt, qualificationSignalsSchema(input.conversationSoFar.map((m) => m.body)));
 }
