@@ -126,6 +126,15 @@ export async function POST(req: Request) {
         },
       });
 
+      // An async payment method (e.g. a US bank debit) leaves the subscription INCOMPLETE when
+      // checkout.session.completed first fires — that handler correctly does not grant WON yet.
+      // The only later signal that payment actually cleared is this event transitioning the
+      // subscription to active, so WON must be granted here too, not only at checkout time.
+      if (status === "ACTIVE") {
+        const advanced = await prisma.prospect.updateMany({ where: { id: existing.prospectId, status: { not: "WON" } }, data: { status: "WON" } });
+        if (advanced.count > 0) await logEvent("status_changed", { prospectId: existing.prospectId, payload: { status: "WON" }, actorEmail: "system:stripe_webhook" });
+      }
+
       if (status === "CANCELED") {
         const key = `customer_offer_${existing.prospectId}`;
         const row = await prisma.setting.findUnique({ where: { key } });
