@@ -6,6 +6,7 @@ import { stopImpersonation } from "@/lib/actions/impersonationActions";
 const NAV = [
   { href: "/portal", label: "Overview" },
   { href: "/portal/reviews", label: "Reviews" },
+  { href: "/portal/estimates", label: "Estimates" },
   { href: "/portal/competitors", label: "Competitors" },
   { href: "/portal/ask", label: "Ask your AI Growth Manager" },
   { href: "/portal/billing", label: "Billing" },

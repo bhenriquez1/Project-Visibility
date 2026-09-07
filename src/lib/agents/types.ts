@@ -1,8 +1,9 @@
 /**
- * V3 agent architecture. Scout/Audit/Sales (src/lib/agents/{scout,audit,sales}.ts) implement
- * this contract and are dispatched by src/lib/agents/runner.ts. Onboarding/Growth/Reputation/
- * Analytics/Retention (see ROADMAP.md) don't have implementations yet — the `AgentName` union
- * already lists them so adding one later doesn't require touching this file again.
+ * V3 agent architecture. All 8 of ROADMAP.md's named V3 agents (src/lib/agents/{scout,audit,
+ * sales,onboarding,growth,reputation,analytics,retention}.ts) implement this contract and are
+ * dispatched by src/lib/agents/runner.ts. `estimateFollowUp` is a 9th, additive agent — it acts
+ * on a Prospect's own leads/estimates, a distinct relationship from anything the 8-agent
+ * pipeline manages, so it isn't part of ROADMAP.md's named sequence.
  *
  * ENGINEERING_STANDARDS.md: "No premature autonomy" still applies — `AUTOMATIC` is reserved for
  * actions with zero external footprint (creating an internal record, running an audit). Nothing
@@ -20,7 +21,8 @@ export type AgentName =
   | "growth"
   | "reputation"
   | "analytics"
-  | "retention";
+  | "retention"
+  | "estimateFollowUp";
 
 /**
  * Mirrors the Prisma `ApprovalTier` enum used by `Message` today. An agent declares the tier

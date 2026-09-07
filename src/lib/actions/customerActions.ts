@@ -11,6 +11,7 @@ import { postReviewReply } from "@/lib/providers/googleBusinessProfile";
 import { answerGrowthManagerQuestion } from "@/lib/providers/llm";
 import { syncReviewsForProspect, draftReviewReply } from "@/lib/reviews/reviewSync";
 import { createBillingPortalSession } from "@/lib/providers/stripe";
+import { sendEmail } from "@/lib/providers/email";
 import {
   assertAgentCostBudget,
   assertMonthlyAiEntitlement,
@@ -40,6 +41,15 @@ async function requireOwnedReviewReply(reviewReplyId: string, prospectId: string
     throw new Error("This review does not belong to your account.");
   }
   return reviewReply;
+}
+
+/** Ensures the current customer owns this Estimate before any read/write. */
+async function requireOwnedEstimate(estimateId: string, prospectId: string) {
+  const estimate = await prisma.estimate.findUniqueOrThrow({ where: { id: estimateId } });
+  if (estimate.prospectId !== prospectId) {
+    throw new Error("This estimate does not belong to your account.");
+  }
+  return estimate;
 }
 
 export async function syncReviewsAction() {
@@ -198,4 +208,95 @@ export async function openBillingPortalAction() {
   }
 
   redirect(portal.data.url);
+}
+
+export async function logEstimateAction(input: {
+  customerName: string;
+  customerEmail?: string;
+  serviceDescription: string;
+  amountCents: number;
+}) {
+  const prospectId = await requireCustomer();
+
+  await prisma.estimate.create({
+    data: {
+      prospectId,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail || null,
+      serviceDescription: input.serviceDescription,
+      amountCents: input.amountCents,
+    },
+  });
+  await logEvent("estimate_logged", { prospectId, payload: { source: "self_serve" } });
+
+  revalidatePath("/portal/estimates");
+}
+
+export async function markEstimateAcceptedAction(estimateId: string) {
+  const prospectId = await requireCustomer();
+  await requireOwnedEstimate(estimateId, prospectId);
+
+  await prisma.estimate.update({
+    where: { id: estimateId },
+    data: { status: "ACCEPTED", acceptedAt: new Date() },
+  });
+
+  revalidatePath("/portal/estimates");
+}
+
+export async function markEstimateDeclinedAction(estimateId: string) {
+  const prospectId = await requireCustomer();
+  await requireOwnedEstimate(estimateId, prospectId);
+
+  await prisma.estimate.update({
+    where: { id: estimateId },
+    data: { status: "DECLINED", declinedAt: new Date() },
+  });
+
+  revalidatePath("/portal/estimates");
+}
+
+export async function approveAndSendEstimateFollowUp(estimateId: string, editedBody?: string) {
+  const prospectId = await requireCustomer();
+  await assertAutomationNotPaused(); // global pause stops outbound sends immediately too
+  const estimate = await requireOwnedEstimate(estimateId, prospectId);
+
+  if (estimate.status !== "FOLLOW_UP_DRAFTED") {
+    throw new Error("This estimate doesn't have a follow-up draft ready to send.");
+  }
+  if (!estimate.customerEmail) {
+    throw new Error("This estimate has no customer email on file — add one before sending.");
+  }
+
+  const body = editedBody ?? estimate.followUpBody ?? "";
+
+  const result = await sendEmail({
+    to: estimate.customerEmail,
+    subject: estimate.followUpSubject ?? "Following up on your estimate",
+    html: body.replace(/\n/g, "<br />"),
+  });
+
+  if (!result.ok) {
+    throw new Error(`Couldn't send: ${result.reason} — ${result.detail}`);
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimateId },
+    data: { status: "FOLLOW_UP_SENT", followUpBody: body, followUpSentAt: new Date() },
+  });
+
+  await logEvent("estimate_follow_up_sent", { prospectId, payload: { estimateId } });
+  revalidatePath("/portal/estimates");
+}
+
+export async function dismissEstimateFollowUp(estimateId: string) {
+  const prospectId = await requireCustomer();
+  await requireOwnedEstimate(estimateId, prospectId);
+
+  await prisma.estimate.update({
+    where: { id: estimateId },
+    data: { status: "DISMISSED" },
+  });
+
+  revalidatePath("/portal/estimates");
 }

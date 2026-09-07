@@ -414,3 +414,25 @@ Respond with JSON: {"narrative": string}`;
 
   return completeAndParse(client, prompt, analyticsDigestSchema);
 }
+
+export async function generateEstimateFollowUp(input: {
+  customerName: string;
+  serviceDescription: string;
+  amountCents: number;
+  daysSinceSent: number;
+}): Promise<ProviderResult<DraftOutput>> {
+  const { client, detail } = configuredClient();
+  if (!client) return notConfigured(detail);
+
+  const prompt = `Write a short, friendly follow-up email on behalf of a local service business
+to their own customer, ${input.customerName}, who received a price estimate ${input.daysSinceSent}
+days ago and hasn't responded yet. Just check in — never invent urgency, never offer a discount
+or any concession the business hasn't authorized, never guarantee availability. Keep it under
+100 words.
+
+Estimate: ${input.serviceDescription}, $${(input.amountCents / 100).toFixed(2)}
+
+Respond with JSON: {"subject": string, "body": string}`;
+
+  return completeAndParse(client, prompt, draftSchema);
+}

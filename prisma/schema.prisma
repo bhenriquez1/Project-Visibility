@@ -65,6 +65,7 @@ model Prospect {
   events                   Event[]
   googleBusinessConnection GoogleBusinessConnection?
   reviewReplies            ReviewReply[]
+  estimates                Estimate[]
 
   @@index([status])
 }
@@ -315,6 +316,43 @@ model ReviewReply {
   createdAt DateTime @default(now())
 
   @@unique([prospectId, googleReviewId])
+  @@index([prospectId])
+}
+
+// ─── V3: Estimate Follow-Up — a Prospect's own leads/estimates, entered manually since no
+// CRM/accounting integration (Jobber, Housecall Pro, QuickBooks) is credentialed. Approved by the
+// business (not Brian), addressed to their own lead — same control path as ReviewReply. ───
+
+enum EstimateStatus {
+  SENT // logged by the business, no follow-up yet
+  FOLLOW_UP_DRAFTED // agent drafted a nudge, awaiting the business's approval
+  FOLLOW_UP_SENT // business approved it and it was emailed to their lead
+  DISMISSED // business chose not to send the suggested follow-up
+  ACCEPTED // business marked their lead accepted the estimate
+  DECLINED // business marked their lead declined
+}
+
+model Estimate {
+  id         String   @id @default(cuid())
+  prospectId String
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  customerName       String
+  customerEmail      String? // the business's own lead — required to ever send a follow-up
+  serviceDescription String
+  amountCents        Int
+  sentAt             DateTime       @default(now())
+  status             EstimateStatus @default(SENT)
+
+  followUpSubject     String?
+  followUpBody        String?
+  followUpAiGenerated Boolean   @default(false)
+  followUpSentAt      DateTime?
+
+  acceptedAt DateTime?
+  declinedAt DateTime?
+  createdAt  DateTime  @default(now())
+
   @@index([prospectId])
 }
 

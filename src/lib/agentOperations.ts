@@ -6,7 +6,7 @@ export type AutonomyLevel = "MANUAL" | "ASSISTED" | "AUTONOMOUS";
 export type AgentOperatingState = "AUTONOMOUS" | "APPROVAL_REQUIRED" | "PAUSED" | "DEGRADED" | "ERROR";
 
 export const AGENT_NAMES: AgentName[] = [
-  "scout", "audit", "sales", "onboarding", "growth", "reputation", "analytics", "retention",
+  "scout", "audit", "sales", "onboarding", "growth", "reputation", "analytics", "retention", "estimateFollowUp",
 ];
 
 export const DEFAULT_INTERVAL_MINUTES: Record<AgentName, number> = {
@@ -18,6 +18,7 @@ export const DEFAULT_INTERVAL_MINUTES: Record<AgentName, number> = {
   reputation: 360,
   analytics: 1440,
   retention: 1440,
+  estimateFollowUp: 360,
 };
 
 export async function getAutonomyLevel(): Promise<AutonomyLevel> {
@@ -52,7 +53,7 @@ export async function setProspectPaused(prospectId: string, paused: boolean): Pr
 
 function providerConfigured(name: AgentName): boolean {
   if (name === "scout") return Boolean(process.env.GOOGLE_PLACES_API_KEY);
-  if (["audit", "sales", "onboarding", "growth", "reputation", "retention"].includes(name)) {
+  if (["audit", "sales", "onboarding", "growth", "reputation", "retention", "estimateFollowUp"].includes(name)) {
     const ai = (process.env.AI_PROVIDER || "openai").toLowerCase();
     return ai === "anthropic" ? Boolean(process.env.ANTHROPIC_API_KEY) : Boolean(process.env.OPENAI_API_KEY);
   }

@@ -9,6 +9,7 @@ import { growthAgent } from "./growth";
 import { reputationAgent } from "./reputation";
 import { analyticsAgent } from "./analytics";
 import { retentionAgent } from "./retention";
+import { estimateFollowUpAgent } from "./estimateFollowUp";
 import { evaluateAgentAction } from "./controlPolicy";
 import type { Agent, AgentName } from "./types";
 import { isProspectPaused } from "@/lib/agentOperations";
@@ -22,6 +23,7 @@ const REGISTRY: Record<AgentName, Agent> = {
   reputation: reputationAgent,
   analytics: analyticsAgent,
   retention: retentionAgent,
+  estimateFollowUp: estimateFollowUpAgent,
 };
 
 export function listRunnableAgents(): Agent[] {
