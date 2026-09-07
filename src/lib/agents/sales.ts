@@ -3,6 +3,7 @@ import { logEvent } from "@/lib/events";
 import { logAiUsage } from "@/lib/cost";
 import { generateOutreachDraft } from "@/lib/providers/llm";
 import type { Agent, AgentAction } from "./types";
+import { discoverPublicContactEmail } from "@/lib/providers/website";
 
 interface SalesPayload {
   prospectId: string;
@@ -24,23 +25,13 @@ export const salesAgent: Agent = {
     });
 
     const actions: AgentAction[] = [];
-    let skippedNoEmail = 0;
-
     for (const p of candidates) {
-      if (!p.email) {
-        skippedNoEmail += 1;
-        continue;
-      }
       actions.push({
         controlTier: "AI_PREPARED",
         consequence: "DRAFT",
         summary: `Draft outreach: ${p.businessName}`,
         payload: { prospectId: p.id } satisfies SalesPayload,
       });
-    }
-
-    if (skippedNoEmail > 0) {
-      await logEvent("sales_agent_skipped_no_email", { payload: { count: skippedNoEmail } });
     }
 
     return actions;
@@ -54,14 +45,32 @@ export const salesAgent: Agent = {
       include: { audits: { orderBy: { requestedAt: "desc" }, take: 1 } },
     });
 
-    if (!prospect.email) return; // re-checked defensively; proposeActions already filters this.
+    let contactEmail = prospect.email;
+    if (!contactEmail) {
+      const discovered = await discoverPublicContactEmail(prospect.website);
+      if (!discovered.ok) {
+        await logEvent("sales_agent_skipped_no_email", {
+          prospectId,
+          payload: { reason: discovered.detail },
+        });
+        return;
+      }
+      const owner = await prisma.prospect.findUnique({ where: { email: discovered.data.email }, select: { id: true } });
+      if (owner && owner.id !== prospectId) {
+        await logEvent("sales_agent_skipped_duplicate_email", { prospectId, payload: { existingProspectId: owner.id } });
+        return;
+      }
+      contactEmail = discovered.data.email;
+      await prisma.prospect.update({ where: { id: prospectId }, data: { email: contactEmail } });
+      await logEvent("contact_email_discovered", { prospectId, payload: { sourceUrl: discovered.data.sourceUrl, method: "public_business_website" } });
+    }
 
     const latestAudit = prospect.audits[0];
     const narrative = latestAudit?.narrative ?? "No completed audit narrative is available yet.";
 
     const draft = await generateOutreachDraft({
       businessName: prospect.businessName,
-      contactEmail: prospect.email,
+      contactEmail,
       auditNarrative: narrative,
     });
 

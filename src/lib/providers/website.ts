@@ -31,6 +31,34 @@ interface FetchedPage {
   statusCode: number;
 }
 
+export interface PublicContactEmail {
+  email: string;
+  sourceUrl: string;
+}
+
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}\b/gi;
+const REJECTED_EMAILS = new Set([
+  "email@example.com",
+  "name@example.com",
+  "test@example.com",
+  "your@email.com",
+]);
+
+export function extractPublishedEmails(html: string): string[] {
+  const $ = cheerio.load(html);
+  const mailto = $('a[href^="mailto:"]')
+    .map((_, element) => ($(element).attr("href") ?? "").slice(7).split("?")[0])
+    .get();
+  const visible = ($("body").text().match(EMAIL_PATTERN) ?? []);
+  return [...new Set([...mailto, ...visible].map((value) => value.trim().toLowerCase()))]
+    .filter((email) =>
+      email.length <= 254 &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+      !REJECTED_EMAILS.has(email) &&
+      !email.endsWith("@example.com")
+    );
+}
+
 async function fetchHtml(url: string): Promise<ProviderResult<FetchedPage>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -156,4 +184,33 @@ export async function analyzeWebsite(rawUrl: string): Promise<ProviderResult<Web
     pagesCrawled: 1 + additionalPages.length,
     pagesFailed,
   });
+}
+
+/** Finds an address that the business itself publishes. It never guesses an address. */
+export async function discoverPublicContactEmail(
+  rawUrl: string
+): Promise<ProviderResult<PublicContactEmail>> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+  } catch {
+    return requestFailed(`"${rawUrl}" is not a valid URL.`);
+  }
+
+  const primary = await fetchHtml(url.toString());
+  if (!primary.ok) return primary;
+  const candidates = [primary.data, ...(await Promise.all(
+    selectCrawlCandidates(primary.data.html, primary.data.finalUrl)
+      .slice(0, 3)
+      .map(async (candidate) => {
+        const result = await fetchHtml(candidate);
+        return result.ok ? result.data : null;
+      })
+  )).filter((page): page is FetchedPage => page !== null)];
+
+  for (const page of candidates) {
+    const email = extractPublishedEmails(page.html)[0];
+    if (email) return ok({ email, sourceUrl: page.finalUrl });
+  }
+  return requestFailed("No email address was publicly published on the business website.");
 }

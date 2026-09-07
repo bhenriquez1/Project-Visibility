@@ -11,6 +11,7 @@ import { generateOutreachDraft, generateReplyDraft } from "@/lib/providers/llm";
 import { createCheckoutSession } from "@/lib/providers/stripe";
 import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
+import { discoverPublicContactEmail } from "@/lib/providers/website";
 
 /**
  * Redirects back to the prospect page with a readable error instead of letting an admin-facing
@@ -73,8 +74,22 @@ export async function generateOutreachDraftAction(prospectId: string) {
     include: { audits: { orderBy: { requestedAt: "desc" }, take: 1 } },
   });
 
-  if (!prospect.email) {
-    redirectWithError(prospectId, "This prospect has no email on file yet — add one before drafting outreach.");
+  let contactEmail = prospect.email;
+  if (!contactEmail) {
+    const discovered = await discoverPublicContactEmail(prospect.website);
+    if (!discovered.ok) {
+      redirectWithError(prospectId, "No public email was found on this business's website. Add a verified email before drafting outreach.");
+    }
+    const owner = await prisma.prospect.findUnique({ where: { email: discovered.data.email }, select: { id: true } });
+    if (owner && owner.id !== prospectId) {
+      redirectWithError(prospectId, "That public email is already assigned to another prospect. Review the duplicate before outreach.");
+    }
+    contactEmail = discovered.data.email;
+    await prisma.prospect.update({ where: { id: prospectId }, data: { email: contactEmail } });
+    await logEvent("contact_email_discovered", {
+      prospectId,
+      payload: { sourceUrl: discovered.data.sourceUrl, method: "public_business_website" },
+    });
   }
 
   const latestAudit = prospect.audits[0];
@@ -82,7 +97,7 @@ export async function generateOutreachDraftAction(prospectId: string) {
 
   const draft = await generateOutreachDraft({
     businessName: prospect.businessName,
-    contactEmail: prospect.email,
+    contactEmail,
     auditNarrative: narrative,
   });
 
