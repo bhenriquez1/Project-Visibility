@@ -43,6 +43,10 @@ export type AgentConsequence =
 
 export interface AgentContext {
   prospectId?: string;
+  /** Scout only: a specific city to search instead of the configured rotating markets. */
+  city?: string;
+  /** Scout only: how many new prospects to look for, bounded by the configured batch limit. */
+  count?: number;
   /** Which LLM provider this agent's reasoning should route through — see llm/types.ts. */
   llmProviderId: LlmProviderId;
 }

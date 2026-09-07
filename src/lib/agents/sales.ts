@@ -5,6 +5,7 @@ import { generateOutreachDraft } from "@/lib/providers/llm";
 import type { Agent, AgentAction } from "./types";
 import { discoverPublicContactEmail } from "@/lib/providers/website";
 import { collectAuditFindings } from "@/lib/audit/findings";
+import { getAgentBatchLimit } from "@/lib/agentOperations";
 
 interface SalesPayload {
   prospectId: string;
@@ -22,7 +23,7 @@ export const salesAgent: Agent = {
     const candidates = await prisma.prospect.findMany({
       where: { status: "AUDITED", messages: { none: {} } },
       select: { id: true, businessName: true, email: true },
-      take: 25,
+      take: await getAgentBatchLimit("sales"),
     });
 
     const actions: AgentAction[] = [];

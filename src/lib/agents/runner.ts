@@ -11,7 +11,7 @@ import { analyticsAgent } from "./analytics";
 import { retentionAgent } from "./retention";
 import { estimateFollowUpAgent } from "./estimateFollowUp";
 import { evaluateAgentAction } from "./controlPolicy";
-import type { Agent, AgentName } from "./types";
+import type { Agent, AgentContext, AgentName } from "./types";
 import { isProspectPaused } from "@/lib/agentOperations";
 
 const REGISTRY: Record<AgentName, Agent> = {
@@ -37,7 +37,10 @@ export function listRunnableAgents(): Agent[] {
  * PAUSED, DEGRADED, or ERROR. Creates an AgentRun row up front so a failure is always recorded,
  * not silently swallowed, regardless of which caller triggered it.
  */
-export async function runAgent(name: AgentName): Promise<{ agentRunId: string }> {
+export async function runAgent(
+  name: AgentName,
+  contextOverrides?: Partial<Pick<AgentContext, "city" | "count">>
+): Promise<{ agentRunId: string }> {
   const agent = (REGISTRY as Record<string, Agent | undefined>)[name];
   if (!agent) {
     throw new Error(`"${name}" has no runnable implementation yet.`);
@@ -50,7 +53,7 @@ export async function runAgent(name: AgentName): Promise<{ agentRunId: string }>
   });
 
   try {
-    const actions = await agent.proposeActions({ llmProviderId: "openai" });
+    const actions = await agent.proposeActions({ llmProviderId: "openai", ...contextOverrides });
 
     for (const action of actions) {
       const prospectId = typeof action.payload === "object" && action.payload !== null && "prospectId" in action.payload

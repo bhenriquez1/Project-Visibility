@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
 import { searchNearbyBusinesses } from "@/lib/providers/places";
-import type { Agent, AgentAction } from "./types";
+import type { Agent, AgentAction, AgentContext } from "./types";
 import { getAgentBatchLimit } from "@/lib/agentOperations";
 
 interface TargetMarket {
@@ -82,9 +82,15 @@ export const scoutAgent: Agent = {
   // public asset is touched. See src/lib/agents/types.ts for what AUTOMATIC means here.
   defaultControlTier: "AUTOMATIC",
 
-  async proposeActions(): Promise<AgentAction[]> {
-    const markets = buildRotatingTargetMarkets(await getTargetMarkets());
+  async proposeActions(context: AgentContext): Promise<AgentAction[]> {
+    const requestedCity = context.city?.trim();
+    const markets = requestedCity
+      ? DEFAULT_BUSINESS_CATEGORIES.map((category) => ({ category, city: requestedCity }))
+      : buildRotatingTargetMarkets(await getTargetMarkets());
     if (markets.length === 0) return [];
+
+    const batchLimit = await getAgentBatchLimit("scout");
+    const limit = context.count && context.count > 0 ? Math.min(context.count, batchLimit) : batchLimit;
 
     const existing = await prisma.prospect.findMany({
       select: { businessName: true, city: true, website: true },
@@ -102,6 +108,7 @@ export const scoutAgent: Agent = {
     // Sequential, and a failure on one market fails the whole run rather than silently skipping
     // it — a lite first pass; per-market resilience can be added once this is proven out.
     for (const market of markets) {
+      if (actions.length >= limit) break;
       const result = await searchNearbyBusinesses(market.category, market.city);
       if (!result.ok) {
         throw new Error(
@@ -128,7 +135,7 @@ export const scoutAgent: Agent = {
       }
     }
 
-    return actions.slice(0, await getAgentBatchLimit("scout"));
+    return actions.slice(0, limit);
   },
 
   async execute(action: AgentAction): Promise<void> {

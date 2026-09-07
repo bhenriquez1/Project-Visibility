@@ -15,9 +15,9 @@ async function requireAdmin() {
   }
 }
 
-export async function runAgentAction(name: AgentName) {
+export async function runAgentAction(name: AgentName, contextOverrides?: { city?: string; count?: number }) {
   await requireAdmin();
-  await runAgent(name);
+  await runAgent(name, contextOverrides);
   revalidatePath("/admin/agents");
   revalidatePath("/admin/pipeline");
 }
