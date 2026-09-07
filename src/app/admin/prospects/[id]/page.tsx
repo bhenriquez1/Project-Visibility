@@ -273,6 +273,11 @@ export default async function ProspectDetailPage({
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
                 Pending your approval
               </div>
+              {Array.isArray(message.evidenceUsed) && message.evidenceUsed.length > 0 && (
+                <p className="mb-2 text-xs text-amber-800 dark:text-amber-300">
+                  Personalization: cites {message.evidenceUsed.length} real findings — {(message.evidenceUsed as string[]).join("; ")}
+                </p>
+              )}
               <form
                 action={async (formData: FormData) => {
                   "use server";

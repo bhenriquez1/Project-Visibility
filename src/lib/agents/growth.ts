@@ -4,19 +4,10 @@ import { logAiUsage } from "@/lib/cost";
 import { runAudit } from "@/lib/audit/runAudit";
 import { generateGrowthRecommendations } from "@/lib/providers/llm";
 import { assertMonthlyAiEntitlement } from "@/lib/entitlements";
+import { collectScoreFindings as collectOpportunities } from "@/lib/audit/findings";
 import type { Agent, AgentAction } from "./types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const STRONG_THRESHOLD = 71;
-
-const SCORE_LABELS = {
-  visibilityScore: "Google/local visibility",
-  profileScore: "Profile completeness",
-  reputationScore: "Reputation & reviews",
-  websiteSeoScore: "Website & local SEO",
-  competitorGapScore: "Competitor gap",
-  conversionScore: "Conversion opportunities",
-} as const;
 
 interface RefreshAuditPayload {
   prospectId: string;
@@ -34,17 +25,6 @@ async function hasAuditBudgetRemaining(prospectId: string): Promise<{ ok: true }
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : "Entitlement check failed." };
   }
-}
-
-/**
- * Only flags REAL sub-70 scores, never the absence of data — an unavailable source means "we
- * don't know," not "there's a problem to fix." Conflating the two in a customer-facing email
- * would be a fabricated finding.
- */
-function collectOpportunities(audit: Record<keyof typeof SCORE_LABELS, number | null>): string[] {
-  return (Object.keys(SCORE_LABELS) as Array<keyof typeof SCORE_LABELS>)
-    .filter((key) => typeof audit[key] === "number" && audit[key]! < STRONG_THRESHOLD)
-    .map((key) => `${SCORE_LABELS[key]} (${audit[key]}/100)`);
 }
 
 export const growthAgent: Agent = {

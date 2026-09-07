@@ -13,6 +13,7 @@ import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
 import { discoverPublicContactEmail } from "@/lib/providers/website";
 import { isNormalTransition } from "@/lib/pipelineTransitions";
+import { collectAuditFindings } from "@/lib/audit/findings";
 
 /**
  * Redirects back to the prospect page with a readable error instead of letting an admin-facing
@@ -116,8 +117,15 @@ export async function generateOutreachDraftAction(prospectId: string) {
 
   const prospect = await prisma.prospect.findUniqueOrThrow({
     where: { id: prospectId },
-    include: { audits: { orderBy: { requestedAt: "desc" }, take: 1 } },
+    include: {
+      audits: { orderBy: { requestedAt: "desc" }, take: 1 },
+      messages: { where: { status: "PENDING_APPROVAL" }, take: 1 },
+    },
   });
+
+  if (prospect.messages.length > 0) {
+    redirectWithError(prospectId, "There's already a draft pending approval for this prospect — review or reject it before generating another.");
+  }
 
   let contactEmail = prospect.email;
   if (!contactEmail) {
@@ -146,12 +154,15 @@ export async function generateOutreachDraftAction(prospectId: string) {
   }
 
   const latestAudit = prospect.audits[0];
-  const narrative = latestAudit?.narrative ?? "No completed audit narrative is available yet.";
+  const findings = latestAudit ? collectAuditFindings(latestAudit) : [];
+  if (findings.length === 0) {
+    redirectWithError(prospectId, "No concrete audit findings available yet to personalize outreach — run or complete an audit first.");
+  }
 
   const draft = await generateOutreachDraft({
     businessName: prospect.businessName,
     contactEmail,
-    auditNarrative: narrative,
+    findings,
   });
 
   if (!draft.ok) {
@@ -169,10 +180,11 @@ export async function generateOutreachDraftAction(prospectId: string) {
       subject: draft.data.subject,
       body: draft.data.body,
       aiGenerated: true,
+      evidenceUsed: draft.data.evidenceUsed,
     },
   });
 
-  await logEvent("outreach_drafted", { prospectId });
+  await logEvent("outreach_drafted", { prospectId, payload: { evidenceUsed: draft.data.evidenceUsed } });
   revalidatePath(`/admin/prospects/${prospectId}`);
 }
 

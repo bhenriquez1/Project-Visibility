@@ -4,6 +4,7 @@ import { logAiUsage } from "@/lib/cost";
 import { generateOutreachDraft } from "@/lib/providers/llm";
 import type { Agent, AgentAction } from "./types";
 import { discoverPublicContactEmail } from "@/lib/providers/website";
+import { collectAuditFindings } from "@/lib/audit/findings";
 
 interface SalesPayload {
   prospectId: string;
@@ -74,12 +75,16 @@ export const salesAgent: Agent = {
     }
 
     const latestAudit = prospect.audits[0];
-    const narrative = latestAudit?.narrative ?? "No completed audit narrative is available yet.";
+    const findings = latestAudit ? collectAuditFindings(latestAudit) : [];
+    if (findings.length === 0) {
+      await logEvent("sales_agent_skipped_no_findings", { prospectId });
+      return;
+    }
 
     const draft = await generateOutreachDraft({
       businessName: prospect.businessName,
       contactEmail,
-      auditNarrative: narrative,
+      findings,
     });
 
     if (!draft.ok) {
@@ -97,9 +102,10 @@ export const salesAgent: Agent = {
         subject: draft.data.subject,
         body: draft.data.body,
         aiGenerated: true,
+        evidenceUsed: draft.data.evidenceUsed,
       },
     });
 
-    await logEvent("outreach_drafted", { prospectId, payload: { source: "sales_agent" } });
+    await logEvent("outreach_drafted", { prospectId, payload: { source: "sales_agent", evidenceUsed: draft.data.evidenceUsed } });
   },
 };

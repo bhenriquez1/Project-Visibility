@@ -217,25 +217,52 @@ Respond with JSON matching this exact shape:
 const draftSchema = z.object({ subject: z.string(), body: z.string() });
 export type DraftOutput = z.infer<typeof draftSchema> & { meta: AiCallMeta };
 
+/**
+ * `findings` are real, code-verified facts (see src/lib/audit/findings.ts) — never LLM-invented.
+ * The schema forces the draft to cite at least 2 of them verbatim (or a close paraphrase); if it
+ * doesn't, completeAndParse's existing one-controlled-repair mechanism fires automatically using
+ * this refine's own message as the repair instruction, and if that still fails the caller gets an
+ * honest REQUEST_FAILED rather than a generic-sounding draft masquerading as personalized.
+ */
+function outreachDraftSchema(findings: string[]) {
+  const normalized = findings.map((f) => f.toLowerCase());
+  return z
+    .object({ subject: z.string(), body: z.string(), evidenceUsed: z.array(z.string()).min(2) })
+    .strict()
+    .refine(
+      (data) =>
+        data.evidenceUsed.filter((e) =>
+          normalized.some((f) => f.includes(e.toLowerCase()) || e.toLowerCase().includes(f))
+        ).length >= 2,
+      { message: "evidenceUsed must contain at least 2 entries drawn verbatim from the real findings provided, not invented." }
+    );
+}
+
+export type OutreachDraftOutput = { subject: string; body: string; evidenceUsed: string[] } & { meta: AiCallMeta };
+
 export async function generateOutreachDraft(input: {
   businessName: string;
   contactEmail: string;
-  auditNarrative: string;
+  findings: string[];
   founderName?: string;
-}): Promise<ProviderResult<DraftOutput>> {
+}): Promise<ProviderResult<OutreachDraftOutput>> {
   const { client, detail } = configuredClient();
   if (!client) return notConfigured(detail);
 
   const prompt = `Write a short, specific, non-salesy cold email to "${input.businessName}" offering
 the free local-visibility audit findings below as a conversation starter. Sign off as ${input.founderName ?? "Brian"}
-from Local Visibility AI. No hype, no fake urgency, no guaranteed ranking claims. Reference at
-least one concrete finding from the audit narrative. Keep the body under 150 words.
+from Local Visibility AI. No hype, no fake urgency, no guaranteed ranking claims, no invented
+compliments or details not in the findings below. You MUST reference at least 2 of the exact
+findings below in the email body, and list which ones you used in "evidenceUsed" (quoting them
+verbatim or near-verbatim from the list — never a finding that isn't in the list). Keep the body
+under 150 words.
 
-Audit narrative: ${input.auditNarrative}
+Real findings (the only facts you may cite):
+${input.findings.map((f) => `- ${f}`).join("\n")}
 
-Respond with JSON: {"subject": string, "body": string}`;
+Respond with JSON: {"subject": string, "body": string, "evidenceUsed": string[]}`;
 
-  return completeAndParse(client, prompt, draftSchema);
+  return completeAndParse(client, prompt, outreachDraftSchema(input.findings));
 }
 
 export async function generateReplyDraft(input: {
