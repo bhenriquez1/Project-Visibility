@@ -192,6 +192,37 @@ export default async function ProspectDetailPage({
               Not connected: {audit.unavailableSources.join("; ")}
             </p>
           )}
+          {(audit.rawWebsiteSignals || audit.rawPlacesSignals || audit.rawSerpSignals) && (
+            <details className="mt-3 text-xs">
+              <summary className="cursor-pointer text-black/50 dark:text-white/50">Raw evidence</summary>
+              <div className="mt-2 flex flex-col gap-2">
+                {audit.rawWebsiteSignals && (
+                  <div>
+                    <div className="font-medium">Website</div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border border-black/10 bg-black/[.02] p-2 dark:border-white/10 dark:bg-white/[.03]">
+                      {JSON.stringify(audit.rawWebsiteSignals, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {audit.rawPlacesSignals && (
+                  <div>
+                    <div className="font-medium">Google Places</div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border border-black/10 bg-black/[.02] p-2 dark:border-white/10 dark:bg-white/[.03]">
+                      {JSON.stringify(audit.rawPlacesSignals, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {audit.rawSerpSignals && (
+                  <div>
+                    <div className="font-medium">Search visibility</div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border border-black/10 bg-black/[.02] p-2 dark:border-white/10 dark:bg-white/[.03]">
+                      {JSON.stringify(audit.rawSerpSignals, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
         </section>
       ) : (
         <p className="mt-8 text-sm text-black/50 dark:text-white/50">No audit yet.</p>
