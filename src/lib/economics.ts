@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getPricingCatalog } from "@/lib/pricingCatalog";
 
 const STRIPE_PERCENT_FEE = 0.029;
 const STRIPE_FLAT_FEE_CENTS = 30;
@@ -91,7 +92,7 @@ export async function computeEconomics(): Promise<EconomicsSummary> {
   const openPipelineCount = allProspects.filter(
     (p) => p.status !== "WON" && p.status !== "LOST"
   ).length;
-  const foundingPriceCents = await getSettingCents("founding_price_cents");
+  const foundingPriceCents = (await getPricingCatalog()).plans.find(plan => plan.id === "visibility")?.monthlyPriceCents ?? 0;
   const pipelineValueCents = openPipelineCount * foundingPriceCents;
 
   const perCustomer: CustomerEconomics[] = [];

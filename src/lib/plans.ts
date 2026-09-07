@@ -1,4 +1,4 @@
-export type PlanId = "founding" | "growth" | "pro";
+export type PlanId = string;
 
 export interface PlanEntitlements {
   locations: number;
@@ -76,7 +76,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
 };
 
 export function isPlanId(value: string): value is PlanId {
-  return value in PLANS;
+  return Object.hasOwn(PLANS, value);
 }
 
 export function stripePriceIdForPlan(planId: PlanId): string | null {

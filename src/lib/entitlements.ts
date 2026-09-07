@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { resolveStoredPlan, type PlanDefinition, type PlanEntitlements } from "@/lib/plans";
+import { resolveCatalogPlan } from "@/lib/pricingCatalog";
 
 function currentMonthStart(): Date {
   const now = new Date();
@@ -13,7 +14,7 @@ export async function requireActivePlan(prospectId: string): Promise<PlanDefinit
   });
   if (!subscription) throw new Error("An active subscription is required for this service.");
 
-  const plan = resolveStoredPlan(subscription.plan);
+  const plan = await resolveCatalogPlan(subscription.plan) ?? resolveStoredPlan(subscription.plan);
   if (!plan) throw new Error(`Subscription plan "${subscription.plan}" is not recognized.`);
   return plan;
 }

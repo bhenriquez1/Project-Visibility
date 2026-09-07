@@ -5,6 +5,7 @@ import { openBillingPortalAction } from "@/lib/actions/customerActions";
 import { prisma } from "@/lib/prisma";
 import { getPortalViewer } from "@/lib/impersonation";
 import { resolveStoredPlan } from "@/lib/plans";
+import { resolveCatalogPlan } from "@/lib/pricingCatalog";
 
 export default async function PortalBillingPage() {
   const viewer = await getPortalViewer();
@@ -14,7 +15,7 @@ export default async function PortalBillingPage() {
     where: { prospectId: viewer.prospectId },
     orderBy: { createdAt: "desc" },
   });
-  const plan = subscription ? resolveStoredPlan(subscription.plan) : null;
+  const plan = subscription ? await resolveCatalogPlan(subscription.plan) ?? resolveStoredPlan(subscription.plan) : null;
 
   return (
     <div className="max-w-2xl">
@@ -28,7 +29,7 @@ export default async function PortalBillingPage() {
             <div>
               <h2 className="font-semibold">{plan.name} plan</h2>
               <p className="text-sm text-black/60 dark:text-white/60">
-                ${(plan.monthlyPriceCents / 100).toFixed(0)}/month · {subscription.status}
+                ${(subscription.priceCents / 100).toFixed(2)}/month · {subscription.status}
               </p>
             </div>
             <span className="rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10">

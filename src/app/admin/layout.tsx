@@ -2,6 +2,8 @@ import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
 
 const NAV = [
+  { href: "/admin/commands", label: "Talk to Avrrio" },
+  { href: "/admin/pricing", label: "Pricing & Plans" },
   { href: "/admin", label: "Executive & Financials" },
   { href: "/admin/pipeline", label: "Prospecting" },
   { href: "/admin/inbox", label: "Sales Inbox" },

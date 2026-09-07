@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { resolveStoredPlan } from "@/lib/plans";
+import { getPricingCatalog } from "@/lib/pricingCatalog";
 import { computeRetentionSignals, type RetentionRisk } from "@/lib/retention";
 import { startImpersonation } from "@/lib/actions/impersonationActions";
 
@@ -12,6 +13,7 @@ const RISK_STYLES: Record<RetentionRisk, string> = {
 };
 
 export default async function CustomersPage() {
+  const catalog = await getPricingCatalog();
   const customers = await prisma.prospect.findMany({
     where: { status: "WON" },
     orderBy: { updatedAt: "desc" },
@@ -38,7 +40,7 @@ export default async function CustomersPage() {
         <div className="mt-6 flex flex-col gap-3">
           {customers.map((c) => {
             const sub = c.subscriptions[0];
-            const plan = sub ? resolveStoredPlan(sub.plan) : null;
+            const plan = sub ? catalog.plans.find(p => p.id === sub.plan) ?? resolveStoredPlan(sub.plan) : null;
             const risk = retentionByProspect.get(c.id)?.riskLevel ?? "low";
             const gbpConnected = c.googleBusinessConnection && !c.googleBusinessConnection.revokedAt;
 

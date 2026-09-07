@@ -4,6 +4,9 @@ import { getStripeClientForWebhook } from "@/lib/providers/stripe";
 import { isPlanId, planIdForStripePrice } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/events";
+import { resolveCatalogPlan } from "@/lib/pricingCatalog";
+import { monthlyRecurringCents } from "@/lib/billingMath";
+import { customerOfferSchema } from "@/lib/customerOffers";
 
 export async function POST(req: Request) {
   const client = getStripeClientForWebhook();
@@ -37,16 +40,19 @@ export async function POST(req: Request) {
       if (!prospectId) break;
 
       const metadataPlanId = session.metadata?.planId;
-      const planId = metadataPlanId && isPlanId(metadataPlanId) ? metadataPlanId : "founding";
-      const priceCents = session.amount_total ?? 0;
+      const planId = metadataPlanId && (isPlanId(metadataPlanId) || await resolveCatalogPlan(metadataPlanId)) ? metadataPlanId : null;
+      if (!planId) return NextResponse.json({ error: "Unknown subscription plan" }, { status: 422 });
       if (!session.customer || !session.subscription) break;
+      const liveSubscription = await client.subscriptions.retrieve(String(session.subscription));
+      const priceCents = monthlyRecurringCents(liveSubscription.items.data);
+      const status = liveSubscription.status === "active" ? "ACTIVE" : "INCOMPLETE";
 
       await prisma.subscription.upsert({
         where: { stripeSubscriptionId: String(session.subscription) },
         update: {
           plan: planId,
           priceCents,
-          status: "ACTIVE",
+          status,
           canceledAt: null,
         },
         create: {
@@ -55,23 +61,23 @@ export async function POST(req: Request) {
           stripeSubscriptionId: String(session.subscription),
           plan: planId,
           priceCents,
-          status: "ACTIVE",
+          status,
         },
       });
 
-      await prisma.prospect.update({ where: { id: prospectId }, data: { status: "WON" } });
+      if (status === "ACTIVE") await prisma.prospect.update({ where: { id: prospectId }, data: { status: "WON" } });
       await logEvent("subscription_created", { prospectId, payload: { sessionId: session.id } });
       break;
     }
 
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      const sub = event.data.object as Stripe.Subscription;
+      const sub = await client.subscriptions.retrieve((event.data.object as Stripe.Subscription).id);
       const item = sub.items.data[0];
       const priceId = item?.price.id;
       const metadataPlanId = sub.metadata?.planId;
       const planId =
-        metadataPlanId && isPlanId(metadataPlanId)
+        metadataPlanId && (isPlanId(metadataPlanId) || await resolveCatalogPlan(metadataPlanId))
           ? metadataPlanId
           : priceId
             ? planIdForStripePrice(priceId)
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
           status,
           ...(planId ? { plan: planId } : {}),
           ...(item?.price.unit_amount !== null && item?.price.unit_amount !== undefined
-            ? { priceCents: item.price.unit_amount }
+            ? { priceCents: monthlyRecurringCents(sub.items.data) }
             : {}),
           currentPeriodEnd: item?.current_period_end
             ? new Date(item.current_period_end * 1000)
@@ -106,11 +112,31 @@ export async function POST(req: Request) {
       });
 
       if (status === "CANCELED") {
+        const key = `customer_offer_${existing.prospectId}`;
+        const row = await prisma.setting.findUnique({ where: { key } });
+        if (row) {
+          const offer = customerOfferSchema.parse(JSON.parse(row.value));
+          if (offer.founding) await prisma.setting.update({ where: { key }, data: { value: JSON.stringify({ ...offer, revoked: true }) } });
+        }
         await logEvent("subscription_canceled", { prospectId: existing.prospectId });
       }
       break;
     }
 
+    case "invoice.payment_failed":
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      const reference = invoice.parent?.subscription_details?.subscription;
+      if (!reference) break;
+      const sub = await client.subscriptions.retrieve(typeof reference === "string" ? reference : reference.id);
+      const existing = await prisma.subscription.findUnique({ where: { stripeSubscriptionId: sub.id } });
+      if (existing) {
+        const status = sub.status === "active" ? "ACTIVE" : sub.status === "past_due" || sub.status === "unpaid" ? "PAST_DUE" : sub.status === "canceled" ? "CANCELED" : "INCOMPLETE";
+        await prisma.subscription.update({ where: { id: existing.id }, data: { status } });
+        await logEvent(event.type === "invoice.paid" ? "subscription_payment_received" : "subscription_payment_failed", { prospectId: existing.prospectId, payload: { invoiceId: invoice.id } });
+      }
+      break;
+    }
     default:
       break;
   }
