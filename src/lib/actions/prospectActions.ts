@@ -36,10 +36,20 @@ async function requireAdmin() {
 }
 
 export async function setProspectEmail(prospectId: string, email: string) {
-  await requireAdmin();
+  const actorEmail = await requireAdmin();
 
-  await prisma.prospect.update({ where: { id: prospectId }, data: { email } });
-  await logEvent("email_added", { prospectId });
+  const owner = await prisma.prospect.findUnique({ where: { email }, select: { id: true } });
+  if (owner && owner.id !== prospectId) {
+    redirectWithError(prospectId, "That email is already assigned to another prospect. Review the duplicate before adding it here.");
+  }
+
+  // Manual entry, not automated site-crawl discovery — leaves emailVerified at its false
+  // default, and clears any stale source/discovery data a prior auto-discovery may have set.
+  await prisma.prospect.update({
+    where: { id: prospectId },
+    data: { email, emailVerified: false, emailSourceUrl: null, emailDiscoveredAt: null },
+  });
+  await logEvent("email_added", { prospectId, actorEmail });
 
   revalidatePath(`/admin/prospects/${prospectId}`);
   revalidatePath("/admin/pipeline");
@@ -120,7 +130,15 @@ export async function generateOutreachDraftAction(prospectId: string) {
       redirectWithError(prospectId, "That public email is already assigned to another prospect. Review the duplicate before outreach.");
     }
     contactEmail = discovered.data.email;
-    await prisma.prospect.update({ where: { id: prospectId }, data: { email: contactEmail } });
+    await prisma.prospect.update({
+      where: { id: prospectId },
+      data: {
+        email: contactEmail,
+        emailSourceUrl: discovered.data.sourceUrl,
+        emailDiscoveredAt: new Date(),
+        emailVerified: true,
+      },
+    });
     await logEvent("contact_email_discovered", {
       prospectId,
       payload: { sourceUrl: discovered.data.sourceUrl, method: "public_business_website" },

@@ -101,6 +101,7 @@ export interface NearbyBusiness {
   website: string;
   city: string;
   formattedAddress: string;
+  primaryType: string | null;
 }
 
 const NEARBY_FIELD_MASK = [
@@ -110,6 +111,7 @@ const NEARBY_FIELD_MASK = [
   "places.formattedAddress",
   "places.addressComponents",
   "places.businessStatus",
+  "places.primaryType",
 ].join(",");
 
 interface NearbyPlaceResponse {
@@ -119,6 +121,7 @@ interface NearbyPlaceResponse {
   formattedAddress?: string;
   addressComponents?: Array<{ types?: string[]; shortText?: string }>;
   businessStatus?: string;
+  primaryType?: string;
 }
 
 function isPublicWebsite(value: string | undefined): value is string {
@@ -191,6 +194,7 @@ export async function searchNearbyBusinesses(
         website: p.websiteUri,
         city,
         formattedAddress: p.formattedAddress,
+        primaryType: p.primaryType ?? null,
       }));
 
     return ok(businesses);

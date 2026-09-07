@@ -61,7 +61,15 @@ export const salesAgent: Agent = {
         return;
       }
       contactEmail = discovered.data.email;
-      await prisma.prospect.update({ where: { id: prospectId }, data: { email: contactEmail } });
+      await prisma.prospect.update({
+        where: { id: prospectId },
+        data: {
+          email: contactEmail,
+          emailSourceUrl: discovered.data.sourceUrl,
+          emailDiscoveredAt: new Date(),
+          emailVerified: true,
+        },
+      });
       await logEvent("contact_email_discovered", { prospectId, payload: { sourceUrl: discovered.data.sourceUrl, method: "public_business_website" } });
     }
 

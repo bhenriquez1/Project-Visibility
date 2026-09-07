@@ -13,6 +13,9 @@ interface ScoutPayload {
   businessName: string;
   website: string;
   city: string;
+  placeId: string;
+  industry: string | null;
+  verifiedAddress: string;
 }
 
 const DEFAULT_BUSINESS_CATEGORIES = [
@@ -112,6 +115,9 @@ export const scoutAgent: Agent = {
           businessName: business.businessName,
           website: business.website,
           city: business.city,
+          placeId: business.placeId,
+          industry: business.primaryType,
+          verifiedAddress: business.formattedAddress,
         };
         actions.push({
           controlTier: "AUTOMATIC",
@@ -126,7 +132,7 @@ export const scoutAgent: Agent = {
   },
 
   async execute(action: AgentAction): Promise<void> {
-    const { businessName, website, city } = action.payload as ScoutPayload;
+    const { businessName, website, city, placeId, industry, verifiedAddress } = action.payload as ScoutPayload;
 
     const duplicate = await prisma.prospect.findFirst({
       where: {
@@ -142,7 +148,7 @@ export const scoutAgent: Agent = {
     }
 
     const prospect = await prisma.prospect.create({
-      data: { businessName, website, city, source: "scout_agent" },
+      data: { businessName, website, city, source: "scout_agent", placeId, industry, verifiedAddress },
     });
 
     await logEvent("scout_prospect_found", { prospectId: prospect.id });
