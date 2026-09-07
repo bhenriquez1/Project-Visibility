@@ -77,8 +77,11 @@ export async function POST(req: Request) {
         },
       });
 
-      if (status === "ACTIVE") await prisma.prospect.update({ where: { id: prospectId }, data: { status: "WON" } });
-      await logEvent("subscription_created", { prospectId, payload: { sessionId: session.id } });
+      if (status === "ACTIVE") {
+        await prisma.prospect.update({ where: { id: prospectId }, data: { status: "WON" } });
+        await logEvent("status_changed", { prospectId, payload: { status: "WON" }, actorEmail: "system:stripe_webhook" });
+      }
+      await logEvent("subscription_created", { prospectId, payload: { sessionId: session.id }, actorEmail: "system:stripe_webhook" });
       break;
     }
 

@@ -12,6 +12,7 @@ import { createCheckoutSession } from "@/lib/providers/stripe";
 import { assertAutomationNotPaused } from "@/lib/automationPause";
 import type { ProspectStatus } from "@/generated/prisma/client";
 import { discoverPublicContactEmail } from "@/lib/providers/website";
+import { isNormalTransition } from "@/lib/pipelineTransitions";
 
 /**
  * Redirects back to the prospect page with a readable error instead of letting an admin-facing
@@ -57,10 +58,44 @@ export async function setProspectObjectives(prospectId: string, businessObjectiv
 }
 
 export async function updateProspectStatus(prospectId: string, status: ProspectStatus) {
-  await requireAdmin();
+  const actorEmail = await requireAdmin();
+
+  const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
+  if (!isNormalTransition(prospect.status, status)) {
+    redirectWithError(
+      prospectId,
+      `${prospect.status} → ${status} isn't a normal pipeline transition. Use the override below with a reason if this is intentional.`
+    );
+  }
 
   await prisma.prospect.update({ where: { id: prospectId }, data: { status } });
-  await logEvent("status_changed", { prospectId, payload: { status } });
+  await logEvent("status_changed", { prospectId, payload: { status, from: prospect.status }, actorEmail });
+
+  revalidatePath("/admin/pipeline");
+  revalidatePath(`/admin/prospects/${prospectId}`);
+}
+
+/**
+ * The audited escape hatch for a backward, skipped, or otherwise non-normal status change — a
+ * reason is mandatory and every override is logged distinctly from a normal transition so it's
+ * never confused with the pipeline's ordinary progression.
+ */
+export async function overrideProspectStatus(prospectId: string, status: ProspectStatus, reason: string) {
+  const actorEmail = await requireAdmin();
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    redirectWithError(prospectId, "An override requires a reason.");
+  }
+
+  const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
+
+  await prisma.prospect.update({ where: { id: prospectId }, data: { status } });
+  await logEvent("status_override_applied", {
+    prospectId,
+    payload: { from: prospect.status, to: status, reason: trimmedReason },
+    actorEmail,
+  });
 
   revalidatePath("/admin/pipeline");
   revalidatePath(`/admin/prospects/${prospectId}`);
@@ -194,6 +229,12 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
     include: { prospect: true },
   });
 
+  // A retried/double-clicked approval must never send twice — this is the whole message's
+  // idempotency guard, checked before any provider call.
+  if (message.status === "SENT") {
+    redirectWithError(message.prospectId, "This message was already sent.");
+  }
+
   if (!message.prospect.email) {
     throw new Error("This prospect has no email on file — add one before sending.");
   }
@@ -218,6 +259,7 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
       approvedBy: approver,
       approvedAt: new Date(),
       sentAt: new Date(),
+      providerMessageId: sendResult.data.id,
     },
   });
 
@@ -225,7 +267,7 @@ export async function approveAndSendMessage(messageId: string, editedBody?: stri
     await prisma.prospect.update({ where: { id: message.prospectId }, data: { status: "CONTACTED" } });
   }
 
-  await logEvent("outreach_sent", { prospectId: message.prospectId, payload: { messageId } });
+  await logEvent("outreach_sent", { prospectId: message.prospectId, payload: { messageId }, actorEmail: approver });
   revalidatePath(`/admin/prospects/${message.prospectId}`);
   revalidatePath("/admin/pipeline");
 }
@@ -273,14 +315,14 @@ export async function createCheckoutLinkAction(prospectId: string) {
 }
 
 export async function logInboundReply(prospectId: string, body: string) {
-  await requireAdmin();
+  const actorEmail = await requireAdmin();
 
   await prisma.message.create({
     data: { prospectId, direction: "INBOUND", status: "SENT", body, sentAt: new Date() },
   });
 
   await prisma.prospect.update({ where: { id: prospectId }, data: { status: "REPLIED" } });
-  await logEvent("reply_logged", { prospectId });
+  await logEvent("reply_logged", { prospectId, actorEmail });
 
   revalidatePath(`/admin/prospects/${prospectId}`);
   revalidatePath("/admin/pipeline");

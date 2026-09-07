@@ -108,6 +108,9 @@ export async function runAudit(auditId: string): Promise<void> {
   // Only advances a fresh lead's very first audit (PROSPECT -> AUDITED). Re-running an audit
   // later (V3 Growth Agent refreshing a WON customer's signals, for example) must never clobber
   // wherever the prospect/customer actually is in the pipeline.
-  await prisma.prospect.updateMany({ where: { id: prospect.id, status: "PROSPECT" }, data: { status: "AUDITED" } });
-  await logEvent("audit_completed", { prospectId: prospect.id, payload: { auditId } });
+  const advanced = await prisma.prospect.updateMany({ where: { id: prospect.id, status: "PROSPECT" }, data: { status: "AUDITED" } });
+  if (advanced.count > 0) {
+    await logEvent("status_changed", { prospectId: prospect.id, payload: { status: "AUDITED", from: "PROSPECT" }, actorEmail: "agent:audit" });
+  }
+  await logEvent("audit_completed", { prospectId: prospect.id, payload: { auditId }, actorEmail: "agent:audit" });
 }

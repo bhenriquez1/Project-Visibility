@@ -10,11 +10,14 @@ import {
   generateOutreachDraftAction,
   generateReplyDraftAction,
   logInboundReply,
+  overrideProspectStatus,
   rejectMessage,
   setProspectEmail,
   setProspectObjectives,
   updateProspectStatus,
 } from "@/lib/actions/prospectActions";
+
+const ALL_STATUSES = ["PROSPECT", "AUDITED", "CONTACTED", "REPLIED", "QUALIFIED", "PROPOSAL", "WON", "LOST"] as const;
 import { setProspectPauseAction } from "@/lib/actions/pipelineActions";
 import { isProspectPaused } from "@/lib/agentOperations";
 
@@ -88,6 +91,38 @@ export default async function ProspectDetailPage({
           {error}
         </div>
       )}
+
+      <details className="mt-3 text-xs text-black/50 dark:text-white/50">
+        <summary className="cursor-pointer">Override status (backward/skipped jump, requires a reason)</summary>
+        <form
+          action={async (formData: FormData) => {
+            "use server";
+            await overrideProspectStatus(
+              prospect.id,
+              formData.get("status") as (typeof ALL_STATUSES)[number],
+              String(formData.get("reason") ?? "")
+            );
+          }}
+          className="mt-2 flex flex-wrap items-center gap-2"
+        >
+          <select name="status" defaultValue={prospect.status} className="rounded-md border border-black/15 px-2 py-1 dark:border-white/20 dark:bg-black/20">
+            {ALL_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <input
+            name="reason"
+            required
+            placeholder="Reason for this override"
+            className="min-w-[16rem] flex-1 rounded-md border border-black/15 px-2 py-1 dark:border-white/20 dark:bg-black/20"
+          />
+          <button className="rounded-md border border-black/15 px-3 py-1 font-medium dark:border-white/20">
+            Apply override
+          </button>
+        </form>
+      </details>
 
       {prospect.status === "WON" && (
         <section className="mt-6 rounded-lg border border-black/10 p-4 text-sm dark:border-white/10">

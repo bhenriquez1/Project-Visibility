@@ -59,6 +59,26 @@ model Prospect {
   businessObjectives    String?
   onboardingCompletedAt DateTime?
 
+  // Scout discovery provenance — from Google Places, never hand-edited.
+  placeId         String?
+  industry        String?
+  verifiedAddress String?
+
+  // Contact provenance — emailVerified is true only when discovered by crawling the business's
+  // own public website (discoverPublicContactEmail); manual entry via setProspectEmail leaves it
+  // false, since that's Brian asserting the address, not the system verifying it.
+  emailSourceUrl    String?
+  emailDiscoveredAt DateTime?
+  emailVerified     Boolean   @default(false)
+
+  // Outbound compliance — immediate suppression triggers.
+  unsubscribedAt DateTime?
+  complainedAt   DateTime?
+
+  // Visible next action + follow-up date per prospect (Owner Command Center).
+  nextActionLabel String?
+  nextActionDueAt DateTime?
+
   audits                   Audit[]
   messages                 Message[]
   subscriptions            Subscription[]
@@ -179,6 +199,19 @@ model Message {
   sentAt     DateTime?
   rejectedAt DateTime?
 
+  // Delivery tracking — a bounce/complaint is metadata layered on a SENT message (the send
+  // itself succeeded), not a status regression, so these are timestamps, not new enum states.
+  providerMessageId String?
+  deliveredAt       DateTime?
+  bouncedAt         DateTime?
+  complainedAt      DateTime?
+  failedAt          DateTime?
+  providerError     String?
+  idempotencyKey    String? @unique
+
+  // Concrete audit facts this draft cited — the personalization-quality evidence trail.
+  evidenceUsed Json?
+
   createdAt DateTime @default(now())
 
   @@index([prospectId])
@@ -260,6 +293,9 @@ model Event {
   payload    Json?
   prospectId String?
   prospect   Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  // Who or what caused this — an owner's email, "agent:<name>", or "system:<source>". Nullable:
+  // most existing event types predate this column and were never meant to require an actor.
+  actorEmail String?
   createdAt  DateTime  @default(now())
 
   @@index([type])
