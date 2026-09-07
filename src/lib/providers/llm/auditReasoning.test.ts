@@ -18,6 +18,7 @@ const avrrioStoreInput: AuditReasoningInput = {
   businessName: "Avrrio Store",
   city: "Miami, FL",
   website: {
+    url: "https://example.com",
     finalUrl: "https://example.com",
     isHttps: true,
     statusCode: 200,
@@ -27,6 +28,9 @@ const avrrioStoreInput: AuditReasoningInput = {
     h1Count: 1,
     hasLocalBusinessSchema: false,
     wordCount: 250,
+    additionalPages: [],
+    pagesCrawled: 1,
+    pagesFailed: 0,
   },
   place: {
     placeId: "place-1",

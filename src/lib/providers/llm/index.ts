@@ -200,6 +200,11 @@ Score guidance:
 - competitorGapScore: derived from serp signals compared against place signals — how the business stacks up against what's ranking.
 - conversionScore: derived from website signals — presence of clear contact info, calls to action, mobile-friendliness proxies.
 
+Website signals include "additionalPages" — other pages on the same site that were also crawled.
+When writing the narrative, prefer naming a specific page (e.g. "your Services page is missing a
+title tag") over generic site-wide language whenever "additionalPages" gives you something
+specific to point to.
+
 Never imply or promise a specific Google search ranking. Write "narrative" as 3-4 sentences: a
 plain-language summary and the top 2-3 concrete opportunities, grounded only in the data given.
 
